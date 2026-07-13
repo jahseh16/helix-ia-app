@@ -1,0 +1,6 @@
+{
+  "name": "Helix",
+  "description": "Elegant, slate-themed chat hub with modern AI model integrations, fluid keyboard animations, and offline-first performance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
