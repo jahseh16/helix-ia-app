@@ -24,7 +24,7 @@ fun buildMarkdownAnnotatedString(text: String, defaultColor: Color, isUser: Bool
 
                 val endBold = text.indexOf("**", nextBold + 2)
                 if (endBold != -1) {
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = if (isUser) AppText else AppCyan))
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = if (isUser) Color.White else AppCyan))
                     append(text.substring(nextBold + 2, endBold))
                     pop()
                     index = endBold + 2

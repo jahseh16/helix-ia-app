@@ -9,6 +9,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
 class LlmService {
@@ -32,7 +39,7 @@ class LlmService {
         private const val APP_TITLE = "Helix App"
 
         private const val DEFAULT_SYSTEM_PROMPT =
-            "Eres Helix AI, un asistente técnico de programación conectado al entorno local de Termux del usuario. Responde siempre en español con claridad, precisión y una presentación moderna, limpia y profesional."
+            "Eres Helix AI, un asistente técnico de programación. Responde siempre en español con claridad, precisión y una presentación moderna, limpia y profesional."
     }
 
     suspend fun getCompletion(
@@ -101,7 +108,7 @@ class LlmService {
 
             val request = requestBuilder.build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 val bodyString = response.body?.string().orEmpty()
 
                 if (!response.isSuccessful) {
@@ -135,6 +142,8 @@ class LlmService {
                     Exception("No se pudo extraer una respuesta válida del modelo. Respuesta recibida: $bodyString")
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IOException) {
             return@withContext Result.failure(
                 Exception("Error de red al contactar el proveedor: ${e.localizedMessage}", e)
@@ -144,6 +153,20 @@ class LlmService {
                 Exception("Error procesando la respuesta del proveedor: ${e.localizedMessage}", e)
             )
         }
+    }
+
+    /** Ejecuta la llamada sin bloquear el hilo y la aborta si la corrutina se cancela. */
+    private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (!cont.isCancelled) cont.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (cont.isActive) cont.resume(response) else response.close()
+            }
+        })
     }
 
     private fun resolveProviderUrl(provider: String): String {
@@ -166,47 +189,21 @@ class LlmService {
             append("\n\n")
             append(
                 """
-                Instrucciones obligatorias de comportamiento:
+                Instrucciones de comportamiento:
 
                 1. Idioma y estilo:
                 - Responde siempre en español.
-                - Usa un tono profesional, claro, directo y elegante.
-                - Evita estética de terminal, exageraciones “cyberpunk” y emojis decorativos innecesarios.
-                - La redacción debe sentirse moderna, limpia y de alta calidad.
+                - Usa un tono profesional, claro, directo y cercano.
+                - Evita exageraciones y emojis decorativos innecesarios.
 
-                2. Ejecución automática de comandos:
-                - Si el usuario pide ejecutar un comando, inspeccionar archivos, administrar procesos, usar Git, usar SSH, instalar paquetes, revisar logs o realizar una acción real en Termux, debes inferir el comando correcto y proponer una única acción ejecutable.
-                - Para disparar la ejecución automática, agrega EXACTAMENTE al final de tu respuesta:
-                  [EXECUTE: comando]
-                - Ese tag debe ir al final absoluto de la respuesta, sin texto después.
-                - El comando debe ir en una sola línea y sin markdown dentro del tag.
+                2. Precisión:
+                - No inventes datos, resultados ni contenidos de archivos que no hayas visto.
+                - Si no sabes algo o necesitas más contexto, dilo y pregunta.
 
-                Ejemplo:
-                Voy a revisar el estado de PM2 en tu entorno.
-                [EXECUTE: pm2 status]
-
-                3. Bloques de archivos y directorios:
-                - Si muestras archivos, carpetas o resultados estructurados tipo listado, NO los devuelvas como tabla cruda de permisos Linux salvo que el usuario lo pida explícitamente.
-                - En su lugar, usa un bloque Markdown con el identificador `files`.
-                - Presenta la información ordenada, numerada y limpia.
-
-                Ejemplo:
-                ```files
-                1. 📁 Downloads/ (Directorio)
-                2. 📄 index.js (1.2 KB - Script JavaScript)
-                3. 📄 package.json (450 B - Configuración)
-                4. ⚙️ .env (120 B - Variables)
-                ```
-
-                4. Precisión operativa:
-                - No inventes resultados de comandos, estados del sistema ni contenidos de archivos.
-                - Si una acción requiere verificación real, indica brevemente lo que harás y usa el tag [EXECUTE: ...] cuando corresponda.
-                - Si el usuario solo pide explicación, responde sin ejecutar nada.
-
-                5. Formato de respuesta:
+                3. Formato:
                 - Prioriza texto limpio y fácil de leer.
-                - Usa viñetas o bloques solo cuando ayuden.
-                - No uses globos de consola, ruido decorativo ni prefijos innecesarios en cada párrafo.
+                - Usa viñetas solo cuando ayuden.
+                - El código va siempre en bloques Markdown con el lenguaje indicado.
                 """.trimIndent()
             )
         }

@@ -1,22 +1,41 @@
 package com.example.ui.settings
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,314 +46,269 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.chat.*
-import com.example.ui.components.*
-import com.example.ui.theme.*
+import com.example.ui.theme.AppAccent
+import com.example.ui.theme.AppAccentSoft
+import com.example.ui.theme.AppStroke
+import com.example.ui.theme.AppSurface2
+import com.example.ui.theme.AppSurface3
+import com.example.ui.theme.AppText
+import com.example.ui.theme.AppTextMuted
+import com.example.ui.theme.BodyStyle
+import com.example.ui.theme.MetaStyle
+import com.example.ui.theme.ShapeMedium
+import com.example.ui.theme.TitleStyle
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val PROVIDERS = listOf("OpenRouter", "Groq")
+
+/** Contenido de la hoja de ajustes (la envuelve un ModalBottomSheet en [com.example.ui.HelixApp]). */
 @Composable
 fun SettingsPanel(
     optKey: String,
     groqKey: String,
     selectedProvider: String,
     selectedModelId: String,
-    termuxUrl: String,
     systemPrompt: String,
     openRouterModels: List<Pair<String, String>>,
     groqModels: List<Pair<String, String>>,
-    onClose: () -> Unit,
-    onSave: (String, String, String, String, String, String) -> Unit
+    onSave: (String, String, String, String, String) -> Unit
 ) {
     var oKey by remember { mutableStateOf(optKey) }
     var gKey by remember { mutableStateOf(groqKey) }
     var provider by remember { mutableStateOf(selectedProvider) }
     var model by remember { mutableStateOf(selectedModelId) }
-    var termuxAddr by remember { mutableStateOf(termuxUrl) }
     var sysPrompt by remember { mutableStateOf(systemPrompt) }
 
     var oKeyVisible by remember { mutableStateOf(false) }
     var gKeyVisible by remember { mutableStateOf(false) }
     var showModelsDropdown by remember { mutableStateOf(false) }
 
-    val modelsForActiveProvider = if (provider == "OpenRouter") openRouterModels else groqModels
+    val models = if (provider == "OpenRouter") openRouterModels else groqModels
+    var customModel by remember { mutableStateOf(model.isNotBlank() && models.none { it.first == model }) }
 
     LaunchedEffect(provider) {
-        val currentHasModel = modelsForActiveProvider.any { it.first == model }
-        if (!currentHasModel && modelsForActiveProvider.isNotEmpty()) {
-            model = modelsForActiveProvider.first().first
+        if (!customModel && models.none { it.first == model } && models.isNotEmpty()) {
+            model = models.first().first
         }
     }
 
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = 480.dp)
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        color = AppSurface.copy(alpha = 0.98f),
-        shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, AppStroke.copy(alpha = 0.80f)),
-        shadowElevation = 12.dp
+            .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
+        Column {
+            Text(text = "Ajustes", style = TitleStyle.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold))
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = "Proveedor, API key y modelo", style = MetaStyle)
+        }
+
+        // Selector segmentado
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(AppSurface2)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Configuración",
-                        style = TitleStyle.copy(fontSize = 19.sp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Ajustes de API, modelo y conexión",
-                        style = MetaStyle
-                    )
-                }
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.testTag("close_settings_button")
+            PROVIDERS.forEach { item ->
+                val selected = provider == item
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (selected) AppAccent else Color.Transparent)
+                        .clickable { provider = item }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar ajustes",
-                        tint = AppTextMuted
+                    Text(
+                        text = item,
+                        style = BodyStyle.copy(
+                            fontSize = 14.sp,
+                            color = if (selected) Color.White else AppTextMuted,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     )
                 }
             }
+        }
 
-            Row(
+        if (provider == "OpenRouter") {
+            ApiKeyField(
+                label = "OpenRouter API Key",
+                value = oKey,
+                onValueChange = { oKey = it },
+                visible = oKeyVisible,
+                onToggleVisible = { oKeyVisible = !oKeyVisible },
+                testTag = "api_key_openrouter_input"
+            )
+        } else {
+            ApiKeyField(
+                label = "Groq API Key",
+                value = gKey,
+                onValueChange = { gKey = it },
+                visible = gKeyVisible,
+                onToggleVisible = { gKeyVisible = !gKeyVisible },
+                testTag = "api_key_groq_input"
+            )
+        }
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = if (customModel) "Otro (ID personalizado)" else models.find { it.first == model }?.second ?: model,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Modelo", style = MetaStyle) },
+                trailingIcon = {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = AppAccentSoft)
+                },
+                textStyle = BodyStyle,
+                colors = helixFieldColors(),
+                shape = ShapeMedium,
+                modifier = Modifier.fillMaxWidth()
+            )
+            // Capa transparente: un TextField de solo lectura no recibe bien el click.
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(AppSurface2)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .matchParentSize()
+                    .clip(ShapeMedium)
+                    .clickable { showModelsDropdown = true }
+            )
+
+            DropdownMenu(
+                expanded = showModelsDropdown,
+                onDismissRequest = { showModelsDropdown = false },
+                modifier = Modifier
+                    .fillMaxWidth(0.88f)
+                    .background(AppSurface3, ShapeMedium)
             ) {
-                listOf("OpenRouter", "Groq").forEach { item ->
-                    val isSelected = provider == item
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isSelected) AppAccent.copy(alpha = 0.18f)
-                                else Color.Transparent
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) AppAccent.copy(alpha = 0.35f) else Color.Transparent,
-                                RoundedCornerShape(14.dp)
-                            )
-                            .clickable { provider = item }
-                            .padding(vertical = 11.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = item,
-                            style = MetaStyle.copy(
-                                color = if (isSelected) AppText else AppTextMuted,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        )
-                    }
-                }
-            }
-
-            if (provider == "OpenRouter") {
-                OutlinedTextField(
-                    value = oKey,
-                    onValueChange = { oKey = it },
-                    label = { Text("OpenRouter API Key", style = MetaStyle) },
-                    visualTransformation = if (oKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { oKeyVisible = !oKeyVisible }) {
-                            Icon(
-                                imageVector = if (oKeyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = "Toggle Key visibility",
-                                tint = AppAccentSoft
-                            )
-                        }
-                    },
-                    textStyle = BodyStyle,
-                    colors = outlinedFieldColors(),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("api_key_openrouter_input")
-                )
-            } else {
-                OutlinedTextField(
-                    value = gKey,
-                    onValueChange = { gKey = it },
-                    label = { Text("Groq API Key", style = MetaStyle) },
-                    visualTransformation = if (gKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { gKeyVisible = !gKeyVisible }) {
-                            Icon(
-                                imageVector = if (gKeyVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = "Toggle Key visibility",
-                                tint = AppAccentSoft
-                            )
-                        }
-                    },
-                    textStyle = BodyStyle,
-                    colors = outlinedFieldColors(),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("api_key_groq_input")
-                )
-            }
-
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = modelsForActiveProvider.find { it.first == model }?.second ?: model,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Modelo", style = MetaStyle) },
-                    trailingIcon = {
-                        IconButton(onClick = { showModelsDropdown = !showModelsDropdown }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Show models list",
-                                tint = AppCyan
-                            )
-                        }
-                    },
-                    textStyle = BodyStyle,
-                    colors = outlinedFieldColors(),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showModelsDropdown = !showModelsDropdown }
-                )
-
-                DropdownMenu(
-                    expanded = showModelsDropdown,
-                    onDismissRequest = { showModelsDropdown = false },
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .background(AppSurface2)
-                ) {
-                    modelsForActiveProvider.forEach { modelPair ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = modelPair.second,
-                                    style = MetaStyle.copy(
-                                        color = if (modelPair.first == model) AppCyan else AppText
-                                    )
-                                )
-                            },
-                            onClick = {
-                                model = modelPair.first
-                                showModelsDropdown = false
-                            }
-                        )
-                    }
-
+                models.forEach { (id, label) ->
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = "Custom ID Input",
-                                style = MetaStyle.copy(
-                                    color = AppAccentSoft,
-                                    fontWeight = FontWeight.SemiBold
+                                text = label,
+                                style = BodyStyle.copy(
+                                    fontSize = 14.sp,
+                                    color = if (!customModel && id == model) AppAccentSoft else AppText
                                 )
                             )
                         },
                         onClick = {
-                            model = ""
+                            model = id
+                            customModel = false
                             showModelsDropdown = false
                         }
                     )
                 }
-            }
-
-            if (!modelsForActiveProvider.any { it.first == model } && model.isEmpty()) {
-                var customIdText by remember { mutableStateOf("") }
-
-                OutlinedTextField(
-                    value = customIdText,
-                    onValueChange = {
-                        customIdText = it
-                        model = it
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "Otro (ID personalizado)",
+                            style = BodyStyle.copy(fontSize = 14.sp, color = AppAccentSoft, fontWeight = FontWeight.SemiBold)
+                        )
                     },
-                    label = { Text("Custom Model ID", style = MetaStyle) },
-                    textStyle = BodyStyle,
-                    colors = outlinedFieldColors(),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = {
+                        customModel = true
+                        showModelsDropdown = false
+                    }
                 )
             }
+        }
 
+        if (customModel) {
             OutlinedTextField(
-                value = termuxAddr,
-                onValueChange = { termuxAddr = it },
-                label = { Text("Termux WebSocket Address", style = MetaStyle) },
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("ID del modelo", style = MetaStyle) },
+                singleLine = true,
                 textStyle = BodyStyle,
-                colors = outlinedFieldColors(),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("termux_url_input")
-            )
-
-            OutlinedTextField(
-                value = sysPrompt,
-                onValueChange = { sysPrompt = it },
-                label = { Text("System Prompt", style = MetaStyle) },
-                maxLines = 3,
-                textStyle = BodyStyle,
-                colors = outlinedFieldColors(),
-                shape = RoundedCornerShape(18.dp),
+                colors = helixFieldColors(),
+                shape = ShapeMedium,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
 
-            Button(
-                onClick = { onSave(oKey, gKey, provider, model, termuxAddr, sysPrompt) },
-                colors = ButtonDefaults.buttonColors(containerColor = AppAccent),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("save_settings_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Save settings",
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Guardar configuración",
-                    style = BodyStyle.copy(
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-            }
+        OutlinedTextField(
+            value = sysPrompt,
+            onValueChange = { sysPrompt = it },
+            label = { Text("Instrucciones del sistema", style = MetaStyle) },
+            minLines = 2,
+            maxLines = 5,
+            textStyle = BodyStyle,
+            colors = helixFieldColors(),
+            shape = ShapeMedium,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Button(
+            onClick = { onSave(oKey, gKey, provider, model.trim(), sysPrompt) },
+            enabled = model.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AppAccent,
+                contentColor = Color.White,
+                disabledContainerColor = AppSurface3,
+                disabledContentColor = AppTextMuted
+            ),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag("save_settings_button")
+        ) {
+            Icon(imageVector = Icons.Default.Check, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "Guardar", style = BodyStyle.copy(color = Color.Unspecified, fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
         }
     }
 }
 
 @Composable
-internal fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
+private fun ApiKeyField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    visible: Boolean,
+    onToggleVisible: () -> Unit,
+    testTag: String
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, style = MetaStyle) },
+        singleLine = true,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = onToggleVisible) {
+                Icon(
+                    imageVector = if (visible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                    contentDescription = if (visible) "Ocultar key" else "Mostrar key",
+                    tint = AppAccentSoft
+                )
+            }
+        },
+        textStyle = BodyStyle,
+        colors = helixFieldColors(),
+        shape = ShapeMedium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+    )
+}
+
+@Composable
+internal fun helixFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = AppText,
     unfocusedTextColor = AppText,
-    focusedBorderColor = AppAccent.copy(alpha = 0.60f),
+    focusedBorderColor = AppAccent,
     unfocusedBorderColor = AppStroke,
     focusedContainerColor = AppSurface2,
     unfocusedContainerColor = AppSurface2,
     focusedLabelColor = AppAccentSoft,
     unfocusedLabelColor = AppTextMuted,
-    cursorColor = AppAccentSoft
+    cursorColor = AppAccent
 )

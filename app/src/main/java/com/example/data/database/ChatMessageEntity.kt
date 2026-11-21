@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "chat_messages")
 data class ChatMessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val sender: String, // USER, AI, TERMUX_SYS, TERMUX_OUT, TERMUX_ERR
+    val sender: String, // USER, AI, SYSTEM
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
     val modelUsed: String? = null

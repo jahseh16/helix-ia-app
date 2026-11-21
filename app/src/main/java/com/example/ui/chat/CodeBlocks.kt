@@ -139,9 +139,9 @@ fun CodeBlockContainer(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF0C111A),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, AppCyan.copy(alpha = 0.30f))
+        color = AppCodeBg,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, AppStroke)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

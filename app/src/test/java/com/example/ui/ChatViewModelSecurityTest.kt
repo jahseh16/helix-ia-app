@@ -53,11 +53,35 @@ class ChatViewModelSecurityTest {
     @Test
     fun updateSettings_neverWritesKeysToPlainPrefs() {
         val vm = ChatViewModel(app, store)
-        vm.updateSettings("new-or", "new-groq", "OpenRouter", "m", "ws://127.0.0.1:8080", "p")
+        vm.updateSettings("new-or", "new-groq", "OpenRouter", "m", "p")
 
         assertFalse(legacyPrefs.contains("api_key_openrouter"))
         assertFalse(legacyPrefs.contains("api_key_groq"))
         assertEquals("new-or", store.getString("api_key_openrouter"))
         assertEquals("new-groq", store.getString("api_key_groq"))
+    }
+
+    @Test
+    fun hasApplicationOnlyConstructor_requiredByDefaultViewModelFactory() {
+        // La fábrica de AndroidX busca este constructor por reflexión; si falta, la app crashea al abrir.
+        ChatViewModel::class.java.getConstructor(Application::class.java)
+    }
+
+    @Test
+    fun unusedLegacyPreferences_arePurgedOnStartup() {
+        legacyPrefs.edit()
+            .putString("some_removed_setting", "value")
+            .putString("selected_provider", "Groq")
+            .commit()
+
+        val vm = ChatViewModel(app, store)
+
+        assertFalse(legacyPrefs.contains("some_removed_setting"))
+        assertEquals("Groq", vm.selectedProvider.value)
+    }
+
+    @Test
+    fun isNotGeneratingAtStartup() {
+        assertFalse(ChatViewModel(app, store).isGenerating.value)
     }
 }
