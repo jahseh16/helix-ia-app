@@ -1,70 +1,42 @@
 package com.example.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val PremiumDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF8C7BFF),
-    onPrimary = Color(0xFFFFFFFF),
+private val HelixDarkColorScheme = darkColorScheme(
+    primary = AppAccent,
+    onPrimary = DarkBackground,
 
-    secondary = Color(0xFF63D8FF),
-    onSecondary = Color(0xFF07131A),
+    secondary = AppCyan,
+    onSecondary = DarkBackground,
 
-    tertiary = Color(0xFF7BE7B2),
-    onTertiary = Color(0xFF07150F),
+    tertiary = AppGreen,
+    onTertiary = DarkBackground,
 
-    background = Color(0xFF090B11),
-    onBackground = Color(0xFFF4F7FB),
+    background = AppBg,
+    onBackground = AppText,
 
-    surface = Color(0xFF121722),
-    onSurface = Color(0xFFF4F7FB),
+    surface = AppSurface,
+    onSurface = AppText,
 
-    surfaceVariant = Color(0xFF1A2130),
-    onSurfaceVariant = Color(0xFF9CA7B8),
+    surfaceVariant = AppSurface2,
+    onSurfaceVariant = AppTextMuted,
 
-    outline = Color(0xFF2B3344),
-    error = Color(0xFFFF7B90),
-    onError = Color(0xFF2A0D14)
-)
+    surfaceContainer = AppSurface2,
+    surfaceContainerHigh = AppSurface3,
 
-private val PremiumLightColorScheme = lightColorScheme(
-    primary = Color(0xFF6750E6),
-    onPrimary = Color(0xFFFFFFFF),
-
-    secondary = Color(0xFF0E7FA6),
-    onSecondary = Color(0xFFFFFFFF),
-
-    tertiary = Color(0xFF198A5B),
-    onTertiary = Color(0xFFFFFFFF),
-
-    background = Color(0xFFF7F9FC),
-    onBackground = Color(0xFF111827),
-
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF111827),
-
-    surfaceVariant = Color(0xFFEEF2F7),
-    onSurfaceVariant = Color(0xFF667085),
-
-    outline = Color(0xFFD4DAE3),
-    error = Color(0xFFD92D20),
-    onError = Color(0xFFFFFFFF)
+    outline = AppStroke,
+    error = AppDanger,
+    onError = DarkBackground
 )
 
 private val PremiumTypography = Typography(
@@ -152,24 +124,14 @@ private val PremiumShapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp)
 )
 
+/**
+ * Helix es, por ahora, una app solo oscura: la UI se diseñó sobre [HelixTokens].
+ * Un tema claro se añadirá como tokens propios cuando se aborde el rediseño de la Fase 2.
+ */
 @Composable
-fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> PremiumDarkColorScheme
-        else -> PremiumLightColorScheme
-    }
-
+fun MyApplicationTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = HelixDarkColorScheme,
         typography = PremiumTypography,
         shapes = PremiumShapes,
         content = content

@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.database.ChatMessageEntity
 import com.example.data.repository.ChatRepository
+import com.example.data.security.SecureStore
+import com.example.data.security.SecureStoreException
 import com.example.data.network.LlmService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +61,10 @@ data class CommandResult(
     val stderr: String
 )
 
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
+class ChatViewModel(
+    application: Application,
+    private val secureStore: SecureStore = SecureStore.create(application)
+) : AndroidViewModel(application) {
 
     private val sharedPrefs =
         application.getSharedPreferences("helix_prefs", Context.MODE_PRIVATE)
@@ -75,10 +80,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    init {
+        migrateLegacyPlaintextKeys()
+    }
+
     val apiKeyOpenRouter =
-        MutableStateFlow(sharedPrefs.getString("api_key_openrouter", "") ?: "")
+        MutableStateFlow(secureStore.getString(PREF_OPENROUTER).orEmpty())
     val apiKeyGroq =
-        MutableStateFlow(sharedPrefs.getString("api_key_groq", "") ?: "")
+        MutableStateFlow(secureStore.getString(PREF_GROQ).orEmpty())
+    /** Mensaje si no se pudo guardar un secreto cifrado; vacío si todo va bien. */
+    val storageError = MutableStateFlow("")
     val selectedProvider =
         MutableStateFlow(sharedPrefs.getString("selected_provider", "OpenRouter") ?: "OpenRouter")
     val selectedModelId =
@@ -142,6 +153,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         connectWebSocket()
     }
 
+    /**
+     * Versiones anteriores guardaban las API keys en texto plano en `helix_prefs`.
+     * Las cifra una vez y borra la copia en claro (solo si el cifrado tuvo éxito).
+     */
+    private fun migrateLegacyPlaintextKeys() {
+        listOf(PREF_OPENROUTER, PREF_GROQ).forEach { name ->
+            val legacy = sharedPrefs.getString(name, null) ?: return@forEach
+            try {
+                if (legacy.isNotEmpty() && secureStore.getString(name).isNullOrEmpty()) {
+                    secureStore.putString(name, legacy)
+                }
+                sharedPrefs.edit().remove(name).apply()
+            } catch (e: SecureStoreException) {
+                // Si no se puede cifrar, se conserva la copia legada para no perder la key.
+            }
+        }
+    }
+
     fun updateSettings(
         openRouterKey: String,
         groqKey: String,
@@ -159,9 +188,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val urlChanged = termuxUrl.value != termuxAddr
         termuxUrl.value = termuxAddr
 
+        try {
+            secureStore.putString(PREF_OPENROUTER, openRouterKey)
+            secureStore.putString(PREF_GROQ, groqKey)
+            storageError.value = ""
+        } catch (e: SecureStoreException) {
+            // La key queda en memoria para esta sesión, pero NO se guarda en claro.
+            storageError.value = "No se pudieron guardar las API keys de forma segura. " +
+                "Tendrás que introducirlas de nuevo al reiniciar la app."
+        }
+
         sharedPrefs.edit().apply {
-            putString(PREF_OPENROUTER, openRouterKey)
-            putString(PREF_GROQ, groqKey)
             putString(PREF_PROVIDER, provider)
             putString(PREF_MODEL, modelId)
             putString(PREF_TERMUX_URL, termuxAddr)
