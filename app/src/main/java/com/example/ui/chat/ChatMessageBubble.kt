@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,17 +61,21 @@ fun UserBubble(text: String) {
     }
 }
 
+/**
+ * Respuesta del asistente: SIN globo ni tarjeta, directamente sobre el fondo del chat y a todo el ancho.
+ * Solo los mensajes del usuario llevan burbuja. [showCopy] añade el botón de copiar al pie.
+ */
 @Composable
-fun AiTextBubble(text: String) {
-    Surface(
-        shape = AiBubbleShape,
-        color = AppSurface,
-        border = BorderStroke(1.dp, AppStroke),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(end = 20.dp)
-    ) {
+fun AiMessageText(text: String, showCopy: Boolean) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
         MessageContentWithCodeBlocks(text = text, isUser = false)
+        if (showCopy) {
+            CopyButton(
+                textToCopy = text,
+                modifier = Modifier.padding(top = 4.dp).testTag("copy_response_button"),
+                description = "Copiar respuesta completa"
+            )
+        }
     }
 }
 
@@ -130,40 +135,34 @@ fun ErrorNote(text: String) {
 fun ThinkingBubble() {
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         ModelLabel("Pensando")
-        Surface(
-            shape = AiBubbleShape,
-            color = AppSurface,
-            border = BorderStroke(1.dp, AppStroke)
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val transition = rememberInfiniteTransition(label = "thinking")
-                repeat(3) { index ->
-                    val dotAlpha by transition.animateFloat(
-                        initialValue = 0.25f,
-                        targetValue = 0.25f,
-                        animationSpec = infiniteRepeatable(
-                            animation = keyframes {
-                                durationMillis = 1200
-                                0.25f at index * 150 using LinearEasing
-                                1f at index * 150 + 300 using LinearEasing
-                                0.25f at index * 150 + 600 using LinearEasing
-                            },
-                            repeatMode = RepeatMode.Restart
-                        ),
-                        label = "dot_$index"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .alpha(dotAlpha)
-                            .clip(CircleShape)
-                            .background(AppAccentSoft)
-                    )
-                }
+            val transition = rememberInfiniteTransition(label = "thinking")
+            repeat(3) { index ->
+                val dotAlpha by transition.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 0.25f,
+                    animationSpec = infiniteRepeatable(
+                        animation = keyframes {
+                            durationMillis = 1200
+                            0.25f at index * 150 using LinearEasing
+                            1f at index * 150 + 300 using LinearEasing
+                            0.25f at index * 150 + 600 using LinearEasing
+                        },
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "dot_$index"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .alpha(dotAlpha)
+                        .clip(CircleShape)
+                        .background(AppAccentSoft)
+                )
             }
         }
     }

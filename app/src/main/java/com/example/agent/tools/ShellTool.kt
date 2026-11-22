@@ -42,14 +42,14 @@ object ShellGuard {
     }
 
     /** Devuelve el motivo del bloqueo, o null si el comando pasa las comprobaciones. */
-    fun violation(command: String, workspaceRoot: String): String? {
+    fun violation(command: String, workspaceRoot: String, aliases: List<String> = emptyList()): String? {
         if (command.isBlank()) return "El comando está vacío"
         if (command.contains('\u0000')) return "Comando no válido"
         if (DOT_DOT.containsMatchIn(command)) return "No se admiten rutas con '..'"
 
         ABSOLUTE.findAll(command).forEach { m ->
             val p = m.value
-            val inWorkspace = p == workspaceRoot || p.startsWith("$workspaceRoot/")
+            val inWorkspace = (listOf(workspaceRoot) + aliases).any { p == it || p.startsWith("$it/") }
             val safe = SAFE_PREFIXES.any { p == it || p.startsWith("$it/") }
             if (!inWorkspace && !safe) return "Ruta fuera del workspace: $p"
         }
@@ -112,7 +112,7 @@ class ShellTool(
     override val description =
         "Ejecuta un comando de shell de Android (toybox: ls, cat, grep, find, sed, wc, head, tail, mkdir, cp, mv, rm, echo...) " +
             "con el workspace como directorio actual. No hay bash, git, python ni acceso a red. " +
-            "Las rutas deben quedar dentro del workspace. Salida combinada stdout+stderr con el código de salida."
+            "Las rutas deben quedar dentro del almacenamiento accesible (p. ej. /sdcard/Download). Salida combinada stdout+stderr con el código de salida."
     override val parameters = schema(
         listOf("command"),
         "command" to prop("string", "Comando a ejecutar con sh -c"),
@@ -123,7 +123,8 @@ class ShellTool(
     override fun summarize(args: JSONObject) = "$ ${args.optString("command")}"
     override fun validate(args: JSONObject) {
         val cmd = args.requireString("command")
-        ShellGuard.violation(cmd, ws.root.path)?.let { throw PathViolationException(it) }
+        ws.ensureAccessible()
+        ShellGuard.violation(cmd, ws.root.path, ws.aliases)?.let { throw PathViolationException(it) }
     }
 
     override suspend fun execute(args: JSONObject): ToolResult = withContext(Dispatchers.IO) {

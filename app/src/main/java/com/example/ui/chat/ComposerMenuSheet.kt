@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,7 +41,7 @@ import com.example.ui.ModelCatalog
 import com.example.ui.theme.*
 
 /**
- * Hoja compacta del botón "+": modelo, modo agente y workspace. Sustituye a la antigua fila de chips
+ * Hoja compacta del botón "+": modelo y modo agente. Sustituye a la antigua fila de chips
  * para que el campo de escritura sea una sola píldora limpia.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,7 +50,6 @@ fun ComposerMenuSheet(
     provider: String,
     modelId: String,
     agentEnabled: Boolean,
-    workspacePath: String,
     onSelectModel: (provider: String, modelId: String) -> Unit,
     onToggleAgent: () -> Unit,
     onDismiss: () -> Unit
@@ -156,32 +154,6 @@ fun ComposerMenuSheet(
                         style = MetaStyle.copy(color = AppWarning),
                         modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
                     )
-                }
-            }
-
-            // --- Workspace
-            Group {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                        .testTag("menu_workspace_row"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconBadge(Icons.Default.FolderOpen, AppCyan)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Workspace", style = BodyStyle.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
-                        Text(
-                            "Carpeta privada de la app. El agente no puede salir de ella.",
-                            style = MetaStyle
-                        )
-                        Text(
-                            workspacePath,
-                            style = MetaStyle.copy(fontFamily = UiMono, fontSize = 11.sp, color = AppTextMuted),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
                 }
             }
         }

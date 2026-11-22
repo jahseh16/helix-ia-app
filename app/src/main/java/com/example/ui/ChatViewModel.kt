@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.agent.llm.OpenAiCompatClient
 import com.example.agent.model.LlmMessage
+import com.example.agent.permissions.AgentMode
 import com.example.agent.permissions.Permission
 import com.example.agent.permissions.PermissionPolicy
 import com.example.agent.runtime.AgentEvent
@@ -31,6 +32,9 @@ import com.example.data.database.ChatMessageEntity
 import com.example.data.repository.ChatRepository
 import com.example.data.security.SecureStore
 import com.example.data.security.SecureStoreException
+import com.example.data.workspace.AccessStatus
+import com.example.data.workspace.WorkspaceInfo
+import com.example.data.workspace.WorkspaceManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
@@ -60,6 +64,7 @@ class ChatViewModel @JvmOverloads constructor(
     private val repository = ChatRepository(AppDatabase.getDatabase(application).chatMessageDao())
 
     val workspace = Workspace(workspaceRoot)
+    private val workspaceManager = WorkspaceManager(application, sharedPrefs, workspaceRoot)
 
     // Streaming SSE: sin read timeout global; una petición cancelada se aborta con Call.cancel()
     private val llmHttp = OkHttpClient.Builder()
@@ -128,6 +133,37 @@ class ChatViewModel @JvmOverloads constructor(
     )
 
     val toolPermissions = MutableStateFlow(policy.snapshot())
+
+    /** Modo global (Automático / Pedir permiso). Se aplica al instante y se conserva entre sesiones. */
+    val agentMode = MutableStateFlow(
+        runCatching { AgentMode.valueOf(sharedPrefs.getString(PREF_AGENT_MODE, null) ?: "") }.getOrDefault(AgentMode.ASK)
+    ).also { policy.mode = it.value }
+
+    /** Estado del permiso global de almacenamiento. */
+    val workspaceInfo = MutableStateFlow(workspaceManager.evaluate())
+
+    /** Una herramienta falló por falta del permiso: la UI vuelve a ofrecerlo. */
+    val storagePrompt = MutableStateFlow(false)
+
+    /**
+     * Diálogo inicial (solo la primera vez): pide el permiso global, o avisa de la carpeta interna en Android 10.
+     * No aparece si el permiso ya está concedido.
+     */
+    val showStorageOnboarding = MutableStateFlow(
+        !sharedPrefs.getBoolean(WorkspaceManager.KEY_ONBOARDING_DONE, false) &&
+            workspaceInfo.value.status != AccessStatus.GRANTED
+    )
+
+    init {
+        workspaceManager.cleanupLegacySaf()
+        applyWorkspace(workspaceInfo.value)
+    }
+
+    private fun applyWorkspace(info: WorkspaceInfo) {
+        workspace.changeRoot(info.root, info.aliases)
+        // Sin el permiso global, archivos y shell se bloquean y avisan al modelo en vez de fallar en silencio
+        workspace.blockedReason = if (info.needsAction) info.message else null
+    }
 
     private var generationJob: Job? = null
     private var pendingDecision: CompletableDeferred<ApprovalDecision>? = null
@@ -210,6 +246,34 @@ class ChatViewModel @JvmOverloads constructor(
         policy.setLevel(tool, level)
         toolPermissions.value = policy.snapshot()
     }
+
+    fun setAgentMode(mode: AgentMode) {
+        policy.mode = mode
+        agentMode.value = mode
+        sharedPrefs.edit().putString(PREF_AGENT_MODE, mode.name).apply()
+    }
+
+    /** Recalcula el permiso (al volver de los ajustes de Android o al reanudar la app). */
+    fun refreshWorkspace() {
+        val info = workspaceManager.evaluate()
+        applyWorkspace(info)
+        workspaceInfo.value = info
+        if (!info.needsAction) storagePrompt.value = false
+    }
+
+    fun dismissStorageOnboarding() {
+        sharedPrefs.edit().putBoolean(WorkspaceManager.KEY_ONBOARDING_DONE, true).apply()
+        showStorageOnboarding.value = false
+    }
+
+    fun dismissStoragePrompt() {
+        storagePrompt.value = false
+    }
+
+    fun allFilesAccessIntents() =
+        listOf(workspaceManager.allFilesAccessSettingsIntent(), workspaceManager.allFilesAccessFallbackIntent())
+
+    val supportsDirectAccess: Boolean get() = workspaceManager.supportsDirectAccess()
 
     fun respondToApproval(decision: ApprovalDecision) {
         pendingDecision?.complete(decision)
@@ -303,6 +367,7 @@ class ChatViewModel @JvmOverloads constructor(
                         toolStatus = event.result.status.name
                     )
                 )
+                if (event.result.needsStorageAccess) storagePrompt.value = true
                 agentState.update { it.copy(liveTools = it.liveTools - event.call.id) }
             }
 
@@ -342,11 +407,15 @@ class ChatViewModel @JvmOverloads constructor(
         private const val PREF_PROVIDER = "selected_provider"
         private const val PREF_MODEL = "selected_model_id"
         private const val PREF_AGENT_ENABLED = "agent_enabled"
+        private const val PREF_AGENT_MODE = "agent_mode"
         private const val PREF_PERM_PREFIX = "perm_"
         // Clave nueva a propósito: descarta el prompt por defecto anterior guardado en el dispositivo.
         private const val PREF_SYSTEM_PROMPT = "system_prompt_v2"
 
-        private val KNOWN_PREFS = setOf(PREF_PROVIDER, PREF_MODEL, PREF_SYSTEM_PROMPT, PREF_AGENT_ENABLED)
+        private val KNOWN_PREFS = setOf(
+            PREF_PROVIDER, PREF_MODEL, PREF_SYSTEM_PROMPT, PREF_AGENT_ENABLED, PREF_AGENT_MODE,
+            WorkspaceManager.KEY_ONBOARDING_DONE
+        )
 
         private const val DEFAULT_PROVIDER = "OpenRouter"
         private const val DEFAULT_MODEL = ModelCatalog.DEFAULT_OPENROUTER

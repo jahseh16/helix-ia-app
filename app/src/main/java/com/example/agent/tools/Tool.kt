@@ -7,12 +7,18 @@ enum class ToolStatus { OK, ERROR, DENIED }
 
 enum class ToolRisk { READ, WRITE, NETWORK, EXEC }
 
-class ToolResult(val output: String, val status: ToolStatus = ToolStatus.OK) {
+class ToolResult(
+    val output: String,
+    val status: ToolStatus = ToolStatus.OK,
+    /** El fallo se debe a que falta conceder el acceso a la carpeta: la UI debe guiar al usuario a concederlo. */
+    val needsStorageAccess: Boolean = false
+) {
     val isError: Boolean get() = status != ToolStatus.OK
 
     companion object {
         fun ok(output: String) = ToolResult(output, ToolStatus.OK)
-        fun error(message: String) = ToolResult(message, ToolStatus.ERROR)
+        fun error(message: String, needsStorageAccess: Boolean = false) =
+            ToolResult(message, ToolStatus.ERROR, needsStorageAccess)
         fun denied(message: String) = ToolResult(message, ToolStatus.DENIED)
     }
 }

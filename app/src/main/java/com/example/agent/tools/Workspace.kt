@@ -4,6 +4,9 @@ import java.io.File
 
 class PathViolationException(message: String) : ToolException(message)
 
+/** Falta el permiso de almacenamiento de Android (Acceso a todos los archivos). */
+class StoragePermissionException(message: String) : ToolException(message)
+
 /**
  * Directorio de trabajo del agente. TODAS las herramientas de archivos resuelven rutas con
  * [resolve], que impide salir del workspace:
@@ -12,14 +15,35 @@ class PathViolationException(message: String) : ToolException(message)
  *  - resuelve enlaces simbólicos (canonical) y comprueba que el destino siga dentro del root.
  */
 class Workspace(rootDir: File) {
-    val root: File
+    /** Raíz activa. Puede cambiar en caliente (carpeta interna ↔ almacenamiento compartido completo). */
+    @Volatile
+    var root: File = rootDir.also { it.mkdirs() }.canonicalFile
+        private set
 
-    init {
-        rootDir.mkdirs()
-        root = rootDir.canonicalFile
+    /** Rutas equivalentes a [root] (p. ej. `/sdcard` ↔ `/storage/emulated/0`); el shell las acepta tal cual. */
+    @Volatile
+    var aliases: List<String> = emptyList()
+        private set
+
+    /**
+     * Si no es null, falta el permiso de almacenamiento: ninguna herramienta de archivos ni el shell
+     * pueden operar, y el fallo avisa para que la app solicite el permiso (no falla en silencio).
+     */
+    @Volatile
+    var blockedReason: String? = null
+
+    fun changeRoot(dir: File, aliases: List<String> = emptyList()) {
+        dir.mkdirs()
+        root = dir.canonicalFile
+        this.aliases = aliases
+    }
+
+    fun ensureAccessible() {
+        blockedReason?.let { throw StoragePermissionException(it) }
     }
 
     fun resolve(path: String): File {
+        ensureAccessible()
         val p = path.trim().ifEmpty { "." }
         if (p.contains('\u0000')) throw PathViolationException("Ruta no válida")
         if (p.split('/', '\\').any { it == ".." }) {
@@ -34,7 +58,12 @@ class Workspace(rootDir: File) {
         }
 
         val inside = canonical == root || canonical.path.startsWith(root.path + File.separator)
-        if (!inside) throw PathViolationException("Ruta fuera del workspace: $p")
+        if (!inside) {
+            throw PathViolationException(
+                "Ruta fuera del área accesible: $p. Solo puedes trabajar dentro de ${root.path} " +
+                    "(rutas como /sdcard/Download/... o relativas a esa carpeta)."
+            )
+        }
         return canonical
     }
 

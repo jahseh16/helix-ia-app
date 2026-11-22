@@ -1,59 +1,215 @@
 package com.example.ui.chat
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import com.example.ui.components.*
-import com.example.ui.settings.*
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 
-fun buildMarkdownAnnotatedString(text: String, defaultColor: Color, isUser: Boolean = false): androidx.compose.ui.text.AnnotatedString {
-    return buildAnnotatedString {
-        var index = 0
-        while (index < text.length) {
-            val nextBold = text.indexOf("**", index)
-            val nextCode = text.indexOf("`", index)
+private val LINK = Regex("""^\[([^\]\n]+)]\((https?://[^)\s]+)\)""")
 
-            if (nextBold != -1 && (nextCode == -1 || nextBold < nextCode)) {
-                append(text.substring(index, nextBold))
+/**
+ * Markdown inline: `código`, **negrita**, *cursiva* / _cursiva_, ~~tachado~~ y [enlaces](https://…).
+ * Un marcador sin cierre se deja literal (importante durante el streaming, cuando el cierre aún no llegó).
+ */
+fun buildMarkdownAnnotatedString(text: String, defaultColor: Color, isUser: Boolean = false): AnnotatedString =
+    buildAnnotatedString { appendInline(text, defaultColor, isUser) }
 
-                val endBold = text.indexOf("**", nextBold + 2)
-                if (endBold != -1) {
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = if (isUser) Color.White else AppCyan))
-                    append(text.substring(nextBold + 2, endBold))
-                    pop()
-                    index = endBold + 2
-                } else {
-                    append("**")
-                    index = nextBold + 2
-                }
-            } else if (nextCode != -1 && (nextBold == -1 || nextCode < nextBold)) {
-                append(text.substring(index, nextCode))
-
-                val endCode = text.indexOf("`", nextCode + 1)
-                if (endCode != -1) {
-                    pushStyle(
+private fun AnnotatedString.Builder.appendInline(text: String, color: Color, isUser: Boolean) {
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            c == '`' -> {
+                val end = text.indexOf('`', i + 1)
+                if (end > i && !text.substring(i + 1, end).contains('\n')) {
+                    withStyle(
                         SpanStyle(
                             fontFamily = UiMono,
-                            color = AppAccentSoft,
-                            background = Color.White.copy(alpha = 0.08f)
+                            fontSize = 13.sp,
+                            color = if (isUser) Color.White else AppCyan,
+                            background = Color.White.copy(alpha = 0.10f)
                         )
+                    ) { append(text.substring(i + 1, end)) }
+                    i = end + 1
+                } else { append(c); i++ }
+            }
+
+            text.startsWith("**", i) || text.startsWith("__", i) -> {
+                val marker = text.substring(i, i + 2)
+                val end = text.indexOf(marker, i + 2)
+                if (end > i + 2) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(text.substring(i + 2, end), color, isUser) }
+                    i = end + 2
+                } else { append(marker); i += 2 }
+            }
+
+            text.startsWith("~~", i) -> {
+                val end = text.indexOf("~~", i + 2)
+                if (end > i + 2) {
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendInline(text.substring(i + 2, end), color, isUser) }
+                    i = end + 2
+                } else { append("~~"); i += 2 }
+            }
+
+            (c == '*' || c == '_') && canOpenItalic(text, i) -> {
+                val end = findItalicEnd(text, i + 1, c)
+                if (end > i + 1) {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(text.substring(i + 1, end), color, isUser) }
+                    i = end + 1
+                } else { append(c); i++ }
+            }
+
+            c == '[' -> {
+                val m = LINK.find(text.substring(i))
+                if (m != null) {
+                    withLink(
+                        LinkAnnotation.Url(
+                            m.groupValues[2],
+                            TextLinkStyles(SpanStyle(color = if (isUser) Color.White else AppAccentSoft, textDecoration = TextDecoration.Underline))
+                        )
+                    ) { append(m.groupValues[1]) }
+                    i += m.value.length
+                } else { append(c); i++ }
+            }
+
+            else -> { append(c); i++ }
+        }
+    }
+}
+
+/** `*` o `_` abren cursiva solo si van pegados a una palabra (evita `snake_case` y `2 * 3`). */
+private fun canOpenItalic(text: String, i: Int): Boolean {
+    val next = text.getOrNull(i + 1) ?: return false
+    if (next.isWhitespace() || next == text[i]) return false
+    if (text[i] == '_') {
+        val prev = text.getOrNull(i - 1)
+        if (prev != null && prev.isLetterOrDigit()) return false
+    }
+    return true
+}
+
+private fun findItalicEnd(text: String, from: Int, marker: Char): Int {
+    var j = from
+    while (j < text.length) {
+        if (text[j] == '\n') return -1
+        if (text[j] == marker && !text[j - 1].isWhitespace() && text.getOrNull(j + 1) != marker) {
+            if (marker == '_' && text.getOrNull(j + 1)?.isLetterOrDigit() == true) { j++; continue }
+            return j
+        }
+        j++
+    }
+    return -1
+}
+
+/** Pinta el Markdown de un fragmento de texto (sin bloques de código: esos los separa [parseMessageText]). */
+@Composable
+fun MarkdownText(text: String, isUser: Boolean, modifier: Modifier = Modifier) {
+    val blocks = remember(text) { MarkdownParser.parse(text) }
+    val base = if (isUser) Color.White else AppText
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is MdBlock.Heading -> {
+                    val size = when (block.level) { 1 -> 24.sp; 2 -> 21.sp; 3 -> 18.sp; else -> 16.sp }
+                    Text(
+                        text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
+                        style = BodyStyle.copy(color = base, fontSize = size, lineHeight = size * 1.3f, fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(top = if (block.level <= 2) 6.dp else 2.dp)
                     )
-                    append(text.substring(nextCode + 1, endCode))
-                    pop()
-                    index = endCode + 1
-                } else {
-                    append("`")
-                    index = nextCode + 1
                 }
-            } else {
-                append(text.substring(index))
-                break
+
+                is MdBlock.Paragraph -> Text(
+                    text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
+                    style = BodyStyle.copy(color = base, lineHeight = 24.sp)
+                )
+
+                is MdBlock.ListItem -> Row(modifier = Modifier.padding(start = (block.level * 18).dp)) {
+                    Text(
+                        text = block.marker,
+                        style = BodyStyle.copy(color = if (isUser) Color.White else AppAccentSoft, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.width(if (block.marker == "•") 18.dp else 26.dp)
+                    )
+                    Text(
+                        text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
+                        style = BodyStyle.copy(color = base, lineHeight = 24.sp),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                is MdBlock.Quote -> Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .background(AppAccent, RoundedCornerShape(2.dp))
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = remember(block.text) { buildMarkdownAnnotatedString(block.text, AppTextMuted, isUser) },
+                        style = BodyStyle.copy(color = if (isUser) Color.White.copy(alpha = 0.9f) else AppTextMuted, lineHeight = 23.sp, fontStyle = FontStyle.Italic)
+                    )
+                }
+
+                MdBlock.Rule -> Box(Modifier.fillMaxWidth().height(1.dp).background(AppStroke))
+
+                is MdBlock.Table -> MarkdownTable(block, base, isUser)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTable(table: MdBlock.Table, base: Color, isUser: Boolean) {
+    val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
+    Column(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .background(AppSurface.copy(alpha = if (isUser) 0.25f else 1f), RoundedCornerShape(14.dp))
+    ) {
+        (listOf(table.header) + table.rows).forEachIndexed { rowIndex, row ->
+            Row(modifier = Modifier.background(if (rowIndex == 0) AppSurface3.copy(alpha = 0.6f) else Color.Transparent)) {
+                repeat(columns) { col ->
+                    Text(
+                        text = remember(row.getOrNull(col)) { buildMarkdownAnnotatedString(row.getOrNull(col).orEmpty(), base, isUser) },
+                        style = BodyStyle.copy(
+                            color = base, fontSize = 13.sp, lineHeight = 18.sp,
+                            fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        modifier = Modifier.widthIn(min = 90.dp, max = 240.dp).padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     }

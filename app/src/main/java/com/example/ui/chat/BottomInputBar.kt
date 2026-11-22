@@ -30,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.agent.permissions.AgentMode
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,11 +58,14 @@ fun BottomInputBar(
     isGenerating: Boolean,
     statusText: String?,
     agentEnabled: Boolean,
+    agentMode: AgentMode,
+    onModeChange: (AgentMode) -> Unit,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     onOpenMenu: () -> Unit
 ) {
-    var textState by remember { mutableStateOf("") }
+    // rememberSaveable: el borrador sobrevive a rotaciones y a cambios de modo/modelo
+    var textState by rememberSaveable { mutableStateOf("") }
     val canSend = textState.isNotBlank()
 
     val send = {
@@ -154,6 +159,14 @@ fun BottomInputBar(
                 .testTag("chat_input_textfield"),
             textStyle = BodyStyle
         )
+
+        if (agentEnabled) {
+            AgentModeSelector(
+                mode = agentMode,
+                onModeChange = onModeChange,
+                modifier = Modifier.padding(bottom = 6.dp, end = 6.dp)
+            )
+        }
 
         Box(
             modifier = Modifier

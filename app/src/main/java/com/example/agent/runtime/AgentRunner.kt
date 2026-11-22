@@ -9,6 +9,7 @@ import com.example.agent.model.StreamEvent
 import com.example.agent.model.ToolCall
 import com.example.agent.permissions.Permission
 import com.example.agent.permissions.PermissionPolicy
+import com.example.agent.tools.StoragePermissionException
 import com.example.agent.tools.ToolException
 import com.example.agent.tools.ToolRegistry
 import com.example.agent.tools.ToolResult
@@ -150,7 +151,7 @@ class AgentRunner(
         try {
             tool.validate(args)
         } catch (e: ToolException) {
-            return finish(call, ToolResult.error(e.message ?: "Argumentos inválidos"))
+            return finish(call, ToolResult.error(e.message ?: "Argumentos inválidos", e is StoragePermissionException))
         }
 
         val summary = tool.summarize(args)
@@ -176,7 +177,7 @@ class AgentRunner(
         } catch (e: CancellationException) {
             throw e
         } catch (e: ToolException) {
-            ToolResult.error(e.message ?: "Error en la herramienta")
+            ToolResult.error(e.message ?: "Error en la herramienta", e is StoragePermissionException)
         } catch (e: Exception) {
             ToolResult.error("Error inesperado en ${call.name}: ${e.message ?: e.javaClass.simpleName}")
         }

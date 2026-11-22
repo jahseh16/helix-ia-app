@@ -121,6 +121,16 @@ class ShellToolTest {
         ).forEach { assertNotNull("'$it' debía bloquearse", violation(it)) }
     }
 
+    @Test fun guard_acceptsStorageAliasesOnlyWhenProvided() {
+        val root = "/storage/emulated/0"
+        val aliases = listOf("/sdcard", "/storage/self/primary")
+        assertNull(ShellGuard.violation("ls /sdcard/Download && cat /storage/emulated/0/a.txt", root, aliases))
+        assertNotNull("/sdcard no es alias sin permiso global", ShellGuard.violation("ls /sdcard/Download", "/data/user/0/app/files/workspace"))
+        assertNotNull(ShellGuard.violation("cat /sdcardx/a", root, aliases))
+        assertNotNull(ShellGuard.violation("cat /data/data/app/x", root, aliases))
+        assertNotNull(ShellGuard.violation("cat /sdcard/../data/x", root, aliases))
+    }
+
     @Test fun guard_rejectsEmptyCommand() {
         assertNotNull(violation("   "))
     }

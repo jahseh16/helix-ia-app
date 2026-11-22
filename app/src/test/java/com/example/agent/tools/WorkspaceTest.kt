@@ -71,4 +71,27 @@ class WorkspaceTest {
         assertEquals(".", ws.relative(ws.root))
         assertTrue(ws.root.isDirectory)
     }
+
+    @Test fun missingStoragePermission_blocksResolveWithAClearError() {
+        ws.blockedReason = "Falta el permiso de almacenamiento"
+        try {
+            ws.resolve("a.txt")
+            fail("debía bloquearse")
+        } catch (e: StoragePermissionException) {
+            assertTrue(e.message!!.contains("permiso de almacenamiento"))
+        }
+        ws.blockedReason = null
+        assertEquals(File(ws.root, "a.txt"), ws.resolve("a.txt"))
+    }
+
+    @Test fun changeRoot_widensTheAllowedArea_andKeepsBlockingTraversal() {
+        val shared = tmp.newFolder("shared")
+        File(shared, "Download").mkdirs()
+        ws.changeRoot(shared, listOf("/sdcard"))
+        assertEquals(listOf("/sdcard"), ws.aliases)
+        assertEquals(File(shared.canonicalFile, "Download/x.txt"), ws.resolve("Download/x.txt"))
+        assertEquals(File(shared.canonicalFile, "Download/x.txt"), ws.resolve(File(shared, "Download/x.txt").path))
+        assertBlocked("../fuera")
+        assertBlocked(tmp.newFolder("otro").path)
+    }
 }

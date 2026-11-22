@@ -42,6 +42,15 @@ val AppPink = Color(0xFFFF6482)
 val AppDanger = Color(0xFFFF453A)
 val AppWarning = Color(0xFFFFB340)
 
+// Resaltado de sintaxis
+val SynKeyword = Color(0xFFC792EA)   // morado
+val SynType = Color(0xFF6CB6FF)      // azul
+val SynFunction = Color(0xFF64D2FF)  // cian
+val SynString = Color(0xFF8CE99A)    // verde
+val SynNumber = Color(0xFFFFB454)    // ámbar
+val SynComment = Color(0xFF6B7794)   // gris tenue
+val SynAnnotation = Color(0xFFFF8FB1)
+
 // Tipografías
 val UiSans = FontFamily.SansSerif
 val UiMono = FontFamily.Monospace

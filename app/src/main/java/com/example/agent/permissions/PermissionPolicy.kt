@@ -3,6 +3,14 @@ package com.example.agent.permissions
 enum class Permission { AUTO, ASK, DENY }
 
 /**
+ * Modo global del agente, seleccionable junto al botón de enviar:
+ *  - AUTOMATIC: ejecuta acciones y ediciones sin confirmación paso a paso.
+ *  - ASK: pide confirmación antes de modificar archivos, usar la red o ejecutar comandos.
+ * En ambos modos, una herramienta BLOQUEADA en Ajustes sigue bloqueada y el shell (NEVER_AUTO) sigue pidiendo confirmación.
+ */
+enum class AgentMode { AUTOMATIC, ASK }
+
+/**
  * Decide si una herramienta se ejecuta sola, requiere aprobación del usuario o está bloqueada.
  *
  *  - Los niveles base se configuran por herramienta ([setLevel]) y se pueden persistir con [onChange].
@@ -13,6 +21,10 @@ class PermissionPolicy(
     initial: Map<String, Permission> = emptyMap(),
     private val onChange: (Map<String, Permission>) -> Unit = {}
 ) {
+    /** Cambia al instante: afecta a la siguiente herramienta que pida el agente, incluso a mitad de una ejecución. */
+    @Volatile
+    var mode: AgentMode = AgentMode.ASK
+
     private val levels = HashMap(DEFAULTS).apply { putAll(initial) }
     private val sessionGrants = HashSet<String>()
 
@@ -36,6 +48,7 @@ class PermissionPolicy(
         return when {
             level == Permission.DENY -> Permission.DENY
             tool in NEVER_AUTO -> Permission.ASK
+            mode == AgentMode.AUTOMATIC -> Permission.AUTO
             tool in sessionGrants -> Permission.AUTO
             else -> level
         }

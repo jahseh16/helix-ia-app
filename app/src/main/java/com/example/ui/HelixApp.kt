@@ -1,5 +1,9 @@
 package com.example.ui
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +19,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.workspace.AccessStatus
+import com.example.ui.chat.StorageAccessDialog
+import com.example.ui.chat.StorageUnsupportedDialog
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -62,6 +74,38 @@ fun HelixApp(viewModel: ChatViewModel) {
     val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
     val selectedModelId by viewModel.selectedModelId.collectAsStateWithLifecycle()
     val systemPrompt by viewModel.systemPrompt.collectAsStateWithLifecycle()
+
+    val agentMode by viewModel.agentMode.collectAsStateWithLifecycle()
+    val workspaceInfo by viewModel.workspaceInfo.collectAsStateWithLifecycle()
+    val storagePrompt by viewModel.storagePrompt.collectAsStateWithLifecycle()
+    val showOnboarding by viewModel.showStorageOnboarding.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Al volver de los ajustes de Android (o de cualquier otra pantalla) se recalcula el estado del permiso
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshWorkspace() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Android ≤ 9: permisos clásicos de almacenamiento
+    val legacyPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        viewModel.refreshWorkspace()
+    }
+
+    /** Abre los ajustes de Android para conceder el acceso (API oficial según la versión). */
+    val grantAccess: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val (primary, fallback) = viewModel.allFilesAccessIntents()
+            runCatching { context.startActivity(primary) }.onFailure { runCatching { context.startActivity(fallback) } }
+        } else {
+            legacyPermissions.launch(
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            )
+        }
+    }
 
     var showSettings by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -120,6 +164,8 @@ fun HelixApp(viewModel: ChatViewModel) {
                     isGenerating = agentState.isBusy,
                     statusText = agentStatusText(agentState),
                     agentEnabled = agentEnabled,
+                    agentMode = agentMode,
+                    onModeChange = viewModel::setAgentMode,
                     onSend = viewModel::sendMessage,
                     onStop = viewModel::cancelGeneration,
                     onOpenMenu = { showMenu = true }
@@ -128,12 +174,32 @@ fun HelixApp(viewModel: ChatViewModel) {
         }
     }
 
+    if (showOnboarding || storagePrompt) {
+        if (workspaceInfo.status == AccessStatus.INTERNAL_ONLY) {
+            StorageUnsupportedDialog(onDismiss = {
+                viewModel.dismissStorageOnboarding()
+                viewModel.dismissStoragePrompt()
+            })
+        } else {
+            StorageAccessDialog(
+                onAllow = {
+                    viewModel.dismissStorageOnboarding()
+                    viewModel.dismissStoragePrompt()
+                    grantAccess()
+                },
+                onDeny = {
+                    viewModel.dismissStorageOnboarding()
+                    viewModel.dismissStoragePrompt()
+                }
+            )
+        }
+    }
+
     if (showMenu) {
         ComposerMenuSheet(
             provider = selectedProvider,
             modelId = selectedModelId,
             agentEnabled = agentEnabled,
-            workspacePath = viewModel.workspace.root.path,
             onSelectModel = viewModel::selectModel,
             onToggleAgent = { viewModel.setAgentEnabled(!agentEnabled) },
             onDismiss = { showMenu = false }

@@ -92,7 +92,7 @@ fun ChatHistoryList(messages: List<ChatMessageEntity>, agentState: AgentUiState)
             item(key = "live-text") {
                 Column {
                     ModelLabel("Respondiendo")
-                    AiTextBubble(agentState.streamingText + " ▍")
+                    AiMessageText(agentState.streamingText + " ▍", showCopy = false)
                 }
             }
         }
@@ -117,7 +117,7 @@ private fun AiTurn(
             ReasoningBlock(text = message.reasoning, live = false, key = "reasoning-${message.id}")
         }
         if (message.text.isNotBlank()) {
-            AiTextBubble(message.text)
+            AiMessageText(message.text, showCopy = true)
         }
         calls.forEach { call ->
             ToolCard(
