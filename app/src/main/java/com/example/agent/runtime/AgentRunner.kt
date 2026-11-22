@@ -156,7 +156,7 @@ class AgentRunner(
 
         val summary = tool.summarize(args)
         when (policy.decide(call.name)) {
-            Permission.DENY -> return finish(call, ToolResult.denied("Herramienta bloqueada por el usuario en Ajustes. No la vuelvas a intentar."))
+            Permission.DENY -> return finish(call, ToolResult.denied("Herramienta bloqueada por el usuario en Ajustes → Permisos de herramientas. No la vuelvas a intentar; dile al usuario que puede activarla ahí."))
             Permission.ASK -> {
                 val canRemember = policy.canRemember(call.name)
                 emit(AgentEvent.Phase(AgentPhase.AWAITING_APPROVAL, step))
@@ -201,6 +201,6 @@ class AgentRunner(
     }
 
     companion object {
-        const val DEFAULT_MAX_STEPS = 12
+        const val DEFAULT_MAX_STEPS = 20
     }
 }

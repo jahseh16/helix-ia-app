@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class MarkdownParserTest {
@@ -137,5 +138,23 @@ class MarkdownParserTest {
     @Test fun codeInsideTheBlock_isNeverParsedAsMarkdown() {
         val parts = parseMessageText("```md\n# no es título\n- ni lista\n```")
         assertEquals(MessagePart.CodeBlock("# no es título\n- ni lista", "md"), parts.single())
+    }
+
+    @Test fun tableColumns_haveOneWidthPerColumn_withinBounds() {
+        val t = com.example.ui.chat.MdBlock.Table(
+            listOf("Juego", "Descripción"),
+            listOf(listOf("Ark", "Un juego de supervivencia con dinosaurios muy largo ".repeat(4)), listOf("Rust", "PvP"))
+        )
+        val w = com.example.ui.chat.MarkdownParser.tableColumnWidthsDp(t)
+        assertEquals(2, w.size)
+        assertEquals(com.example.ui.chat.MarkdownParser.MAX_COL_DP, w[1])
+        assertTrue(w[0] >= com.example.ui.chat.MarkdownParser.MIN_COL_DP && w[0] < w[1])
+    }
+
+    @Test fun proseBlocks_wrapInsteadOfScrolling() {
+        assertTrue(com.example.ui.chat.isProseLanguage("text"))
+        assertTrue(com.example.ui.chat.isProseLanguage(" Markdown "))
+        assertFalse(com.example.ui.chat.isProseLanguage("kotlin"))
+        assertFalse(com.example.ui.chat.isProseLanguage(""))
     }
 }

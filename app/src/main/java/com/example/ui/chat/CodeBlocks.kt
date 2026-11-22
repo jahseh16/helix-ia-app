@@ -26,6 +26,10 @@ import com.example.ui.theme.*
  * Bloque de código: contenedor oscuro redondeado, barra superior con el lenguaje y "Copiar código",
  * resaltado de sintaxis y scroll horizontal (las líneas largas no se cortan ni se parten).
  */
+/** Bloques de texto plano o Markdown (cuentos, cartas...): se leen mejor con salto de línea normal. */
+fun isProseLanguage(language: String): Boolean =
+    language.trim().lowercase() in setOf("text", "txt", "plain", "plaintext", "markdown", "md", "texto")
+
 @Composable
 fun CodeBlockContainer(code: String, language: String, modifier: Modifier = Modifier) {
     val highlighted = remember(code, language) { SyntaxHighlighter.highlight(code, language) }
@@ -55,7 +59,13 @@ fun CodeBlockContainer(code: String, language: String, modifier: Modifier = Modi
                 CopyButton(textToCopy = code, label = "Copiar código", description = "Copiar código")
             }
 
-            Box(modifier = Modifier.horizontalScroll(scroll)) {
+            if (isProseLanguage(language)) {
+                Text(
+                    text = code,
+                    style = BodyStyle.copy(fontSize = 14.5.sp, lineHeight = 21.sp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)
+                )
+            } else Box(modifier = Modifier.horizontalScroll(scroll)) {
                 Text(
                     text = highlighted,
                     color = AppText,

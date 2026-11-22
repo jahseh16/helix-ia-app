@@ -66,15 +66,19 @@ fun UserBubble(text: String) {
  * Solo los mensajes del usuario llevan burbuja. [showCopy] añade el botón de copiar al pie.
  */
 @Composable
-fun AiMessageText(text: String, showCopy: Boolean) {
+fun AiMessageText(text: String, showCopy: Boolean, messageId: Long? = null) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
         MessageContentWithCodeBlocks(text = text, isUser = false)
         if (showCopy) {
-            CopyButton(
-                textToCopy = text,
-                modifier = Modifier.padding(top = 4.dp).testTag("copy_response_button"),
-                description = "Copiar respuesta completa"
-            )
+            Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                CopyButton(
+                    textToCopy = text,
+                    modifier = Modifier.testTag("copy_response_button"),
+                    description = "Copiar respuesta completa"
+                )
+                if (messageId != null) SpeakButton(messageId, text)
+            }
+            if (messageId != null) SpeakError(messageId)
         }
     }
 }

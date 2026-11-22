@@ -96,6 +96,25 @@ object MarkdownParser {
         return blocks
     }
 
+    /**
+     * Ancho (dp) de cada columna, igual en todas las filas. Se estima por el texto más largo de la
+     * columna (con un tope para que las celdas largas se partan en varias líneas en vez de ensanchar
+     * la tabla sin límite).
+     */
+    fun tableColumnWidthsDp(table: MdBlock.Table): List<Int> {
+        val rows = listOf(table.header) + table.rows
+        val columns = rows.maxOfOrNull { it.size } ?: 0
+        return List(columns) { col ->
+            val longest = rows.maxOfOrNull { visibleLength(it.getOrNull(col).orEmpty()) } ?: 0
+            (longest * 7.4 + 22).toInt().coerceIn(MIN_COL_DP, MAX_COL_DP)
+        }
+    }
+
+    const val MIN_COL_DP = 64
+    const val MAX_COL_DP = 220
+
+    private fun visibleLength(cell: String): Int = cell.replace(Regex("""[*_`~]|\[|]\([^)]*\)"""), "").length
+
     private fun isTableStart(lines: List<String>, i: Int): Boolean =
         lines[i].contains('|') && i + 1 < lines.size && TABLE_SEPARATOR.matches(lines[i + 1]) && lines[i + 1].contains('-')
 

@@ -90,6 +90,23 @@ private suspend fun fetch(client: OkHttpClient, initial: Request, resolver: (Str
     }
 }
 
+/** Mensaje claro para el modelo según el código HTTP, con qué hacer a continuación. */
+internal fun httpErrorHint(code: Int, url: String): String = when (code) {
+    404, 410 -> "HTTP $code: la página no existe ($url). Es una URL rota o inventada: NO la reintentes ni pruebes variantes; " +
+        "usa web_search para encontrar la URL real."
+    401, 403 -> "HTTP $code: el sitio deniega el acceso a $url. Prueba otra fuente de los resultados de web_search."
+    429 -> "HTTP 429: límite de peticiones en ${url.toHttpUrlOrNull()?.host ?: url}. Espera antes de reintentar o usa otra fuente."
+    in 500..599 -> "HTTP $code: error del servidor en $url. Prueba otra fuente."
+    else -> "HTTP $code al pedir $url"
+}
+
+private val SEARCH_HOSTS = Regex("""(^|\.)(google|bing|duckduckgo|yahoo|yandex|baidu)\.[a-z.]+$""")
+
+/** Páginas de resultados de buscadores: al rasparlas solo se obtienen avisos antibots. */
+internal fun isSearchEnginePage(url: HttpUrl): Boolean =
+    SEARCH_HOSTS.containsMatchIn(url.host) && (url.encodedPath.startsWith("/search") || url.encodedPath.startsWith("/html") ||
+        url.queryParameter("q") != null)
+
 private fun parseUrl(raw: String): HttpUrl {
     val url = raw.trim().toHttpUrlOrNull() ?: throw ToolException("URL inválida: $raw")
     if (url.scheme != "http" && url.scheme != "https") throw ToolException("Solo se permiten URLs http/https")
@@ -151,7 +168,7 @@ class HttpRequestTool(
             append(r.body)
         }
         val result = UNTRUSTED_BANNER + truncateOutput(text)
-        return if (r.code in 200..399) ToolResult.ok(result) else ToolResult.error(result)
+        return if (r.code in 200..399) ToolResult.ok(result) else ToolResult.error(httpErrorHint(r.code, r.finalUrl) + "\n\n" + result)
     }
 }
 
@@ -170,7 +187,15 @@ class WebFetchTool(
     override val risk = ToolRisk.NETWORK
 
     override fun summarize(args: JSONObject) = "Leer web ${args.optString("url")}"
-    override fun validate(args: JSONObject) { parseUrl(args.requireString("url")) }
+    override fun validate(args: JSONObject) {
+        val url = parseUrl(args.requireString("url"))
+        if (isSearchEnginePage(url)) {
+            throw ToolException(
+                "No leas páginas de resultados de buscadores (${url.host}): devuelven avisos antibots, no resultados. " +
+                    "Usa la herramienta web_search con la consulta."
+            )
+        }
+    }
 
     override suspend fun execute(args: JSONObject): ToolResult {
         val url = parseUrl(args.requireString("url"))
@@ -187,7 +212,7 @@ class WebFetchTool(
         } catch (e: java.io.IOException) {
             return ToolResult.error("Error de red: ${e.message}")
         }
-        if (r.code !in 200..299) return ToolResult.error("HTTP ${r.code} ${r.message} al pedir ${r.finalUrl}")
+        if (r.code !in 200..299) return ToolResult.error(httpErrorHint(r.code, r.finalUrl))
 
         val type = r.headers.firstOrNull { it.first.equals("content-type", true) }?.second.orEmpty().lowercase()
         val content = when {
@@ -225,7 +250,7 @@ object HtmlText {
         return title to text
     }
 
-    private fun decode(s: String): String = s
+    internal fun decode(s: String): String = s
         .replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">")
         .replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'")
         .replace(Regex("&#(\\d+);")) { m -> m.groupValues[1].toIntOrNull()?.let { String(Character.toChars(it)) } ?: m.value }

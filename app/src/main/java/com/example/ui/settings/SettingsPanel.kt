@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.agent.permissions.Permission
 import com.example.agent.permissions.PermissionPolicy
+import com.example.tts.TtsVoices
 import com.example.ui.ModelCatalog
 import com.example.ui.chat.BrandLogo
 import com.example.ui.chat.ToolPresentation
@@ -79,8 +80,11 @@ fun SettingsPanel(
     systemPrompt: String,
     permissions: Map<String, Permission>,
     onPermissionChange: (String, Permission) -> Unit,
-    onSave: (String, String, String, String, String) -> Unit
+    onSave: (String, String, String, String, String) -> Unit,
+    ttsVoiceId: String = TtsVoices.default.id,
+    onSaveTts: (voiceId: String) -> Unit = {}
 ) {
+    var voiceId by remember { mutableStateOf(ttsVoiceId) }
     var oKey by remember { mutableStateOf(optKey) }
     var gKey by remember { mutableStateOf(groqKey) }
     var provider by remember { mutableStateOf(selectedProvider) }
@@ -255,10 +259,18 @@ fun SettingsPanel(
             modifier = Modifier.fillMaxWidth()
         )
 
+        VoiceSection(
+            voiceId = voiceId,
+            onVoiceChange = { voiceId = it }
+        )
+
         PermissionsSection(permissions = permissions, onChange = onPermissionChange)
 
         Button(
-            onClick = { onSave(oKey, gKey, provider, model.trim(), sysPrompt) },
+            onClick = {
+                onSaveTts(voiceId)
+                onSave(oKey, gKey, provider, model.trim(), sysPrompt)
+            },
             enabled = model.isNotBlank(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = AppAccent,
@@ -373,6 +385,47 @@ private fun PermissionsSection(permissions: Map<String, Permission>, onChange: (
                 if (index < PermissionPolicy.TOOL_NAMES.lastIndex) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(AppStroke))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceSection(
+    voiceId: String,
+    onVoiceChange: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            Text("Voz de lectura", style = TitleStyle.copy(fontSize = 17.sp))
+            Text("La voz que usa el botón Escuchar de cada respuesta", style = MetaStyle)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(AppSurface2)
+        ) {
+            TtsVoices.all.forEachIndexed { index, voice ->
+                val selected = voice.id == voiceId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onVoiceChange(voice.id) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("voice_${voice.id}"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            voice.name,
+                            style = BodyStyle.copy(fontSize = 14.sp, color = if (selected) AppAccentSoft else AppText, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                        )
+                        Text(voice.description, style = MetaStyle.copy(fontSize = 11.sp))
+                    }
+                    if (selected) Icon(Icons.Default.Check, "Seleccionada", tint = AppAccent)
+                }
+                if (index < TtsVoices.all.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(AppStroke))
             }
         }
     }

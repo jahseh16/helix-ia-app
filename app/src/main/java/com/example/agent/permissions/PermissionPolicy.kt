@@ -71,7 +71,9 @@ class PermissionPolicy(
         val NEVER_AUTO = setOf("run_shell")
 
         val TOOL_NAMES = listOf(
-            "read_file", "list_dir", "glob", "grep", "write_file", "edit_file", "http_request", "web_fetch", "run_shell"
+            "read_file", "list_dir", "glob", "grep", "write_file", "edit_file",
+            "web_search", "web_fetch", "http_request", "generate_image",
+            "list_apps", "device_info", "open_app", "open_url", "run_shell"
         )
 
         val DEFAULTS: Map<String, Permission> = mapOf(
@@ -83,6 +85,12 @@ class PermissionPolicy(
             "edit_file" to Permission.ASK,
             "http_request" to Permission.ASK,
             "web_fetch" to Permission.ASK,
+            "generate_image" to Permission.AUTO,
+            "web_search" to Permission.AUTO,
+            "list_apps" to Permission.AUTO,
+            "device_info" to Permission.AUTO,
+            "open_app" to Permission.ASK,
+            "open_url" to Permission.ASK,
             "run_shell" to Permission.ASK
         )
     }

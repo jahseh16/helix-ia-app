@@ -1,6 +1,8 @@
 package com.example.data.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -10,7 +12,7 @@ import androidx.room.PrimaryKey
  *  - TOOL:   resultado de una herramienta ([toolCallId], [toolName], [toolArgs], [toolStatus]); [text] es la salida.
  *  - SYSTEM: aviso informativo de la interfaz.  ERROR: fallo mostrado al usuario.
  */
-@Entity(tableName = "chat_messages")
+@Entity(tableName = "chat_messages", indices = [Index("conversationId")])
 data class ChatMessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sender: String,
@@ -22,7 +24,9 @@ data class ChatMessageEntity(
     val toolCallId: String? = null,
     val toolName: String? = null,
     val toolArgs: String? = null,
-    val toolStatus: String? = null
+    val toolStatus: String? = null,
+    /** Conversación a la que pertenece (tabla `conversations`). */
+    @ColumnInfo(defaultValue = "0") val conversationId: Long = 0
 ) {
     companion object {
         const val SENDER_USER = "USER"

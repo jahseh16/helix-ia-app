@@ -19,6 +19,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.sp
+import com.example.ui.components.StarfieldBackground
+import com.example.ui.drawer.ChatDrawer
+import com.example.ui.profile.ProfileForm
+import com.example.ui.profile.ProfileSetupScreen
+import com.example.ui.theme.TitleStyle
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +54,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.workspace.AccessStatus
+import com.example.ui.chat.LocalTts
+import com.example.ui.chat.TtsUi
 import com.example.ui.chat.StorageAccessDialog
 import com.example.ui.chat.StorageUnsupportedDialog
 import androidx.compose.ui.geometry.Offset
@@ -75,10 +100,28 @@ fun HelixApp(viewModel: ChatViewModel) {
     val selectedModelId by viewModel.selectedModelId.collectAsStateWithLifecycle()
     val systemPrompt by viewModel.systemPrompt.collectAsStateWithLifecycle()
 
+    val ttsState by viewModel.tts.state.collectAsStateWithLifecycle()
+    val ttsVoice by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
+    val ttsUi = remember(ttsState) { TtsUi(ttsState, viewModel.tts::toggle, viewModel.tts::stop) }
+
     val agentMode by viewModel.agentMode.collectAsStateWithLifecycle()
     val workspaceInfo by viewModel.workspaceInfo.collectAsStateWithLifecycle()
     val storagePrompt by viewModel.storagePrompt.collectAsStateWithLifecycle()
     val showOnboarding by viewModel.showStorageOnboarding.collectAsStateWithLifecycle()
+
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val currentConversation by viewModel.currentConversationId.collectAsStateWithLifecycle()
+    val profile by viewModel.profile.collectAsStateWithLifecycle()
+    val showProfileSetup by viewModel.showProfileSetup.collectAsStateWithLifecycle()
+
+    // Primera apertura: perfil de usuario antes que nada
+    if (showProfileSetup) {
+        ProfileSetupScreen(
+            onSave = { n, u, e, photo -> viewModel.saveProfile(n, u, e, photo) },
+            onSkip = viewModel::skipProfileSetup
+        )
+        return
+    }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -109,35 +152,47 @@ fun HelixApp(viewModel: ChatViewModel) {
 
     var showSettings by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    var confirmClear by remember { mutableStateOf(false) }
+    var showProfileEdit by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = AppBg,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0)
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(AppBg)
-                // Resplandor azul sutil en la parte superior
-                .drawBehind {
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(AppAccent.copy(alpha = 0.16f), Color.Transparent),
-                            center = Offset(size.width / 2f, 0f),
-                            radius = size.width * 1.1f
-                        )
-                    )
-                }
-                .padding(innerPadding)
-        ) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val closeDrawerThen: (() -> Unit) -> Unit = { action -> scope.launch { drawerState.close() }; action() }
+
+    // Efecto cristal: lo que queda detrás de un panel abierto se desenfoca (Android 12+)
+    val overlayOpen = drawerState.targetValue == DrawerValue.Open || showMenu || showSettings || showProfileEdit
+    val blur by animateDpAsState(if (overlayOpen) 14.dp else 0.dp, label = "glass-blur")
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        scrimColor = Color.Black.copy(alpha = 0.45f),
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = AppSurface,
+                drawerShape = RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp),
+                modifier = Modifier.width(310.dp).border(1.dp, AppStroke, RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp))
+            ) {
+                ChatDrawer(
+                    conversations = conversations,
+                    currentId = currentConversation,
+                    profile = profile,
+                    onNewChat = { closeDrawerThen(viewModel::newChat) },
+                    onSelect = { id -> closeDrawerThen { viewModel.selectConversation(id) } },
+                    onDelete = viewModel::deleteConversation,
+                    onDeleteAll = viewModel::deleteAllConversations,
+                    onOpenProfile = { closeDrawerThen { showProfileEdit = true } },
+                    onOpenSettings = { closeDrawerThen { showSettings = true } }
+                )
+            }
+        }
+    ) {
+    StarfieldBackground(modifier = Modifier.blur(blur)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 HelixTopBar(
                     provider = selectedProvider,
                     modelId = selectedModelId,
-                    onOpenSettings = { showSettings = true },
-                    onClearChat = { confirmClear = true }
+                    onOpenMenu = { scope.launch { drawerState.open() } },
+                    onNewChat = viewModel::newChat
                 )
 
                 if (storageError.isNotBlank()) {
@@ -145,7 +200,9 @@ fun HelixApp(viewModel: ChatViewModel) {
                 }
 
                 Box(modifier = Modifier.weight(1f)) {
-                    ChatHistoryList(messages = messages, agentState = agentState)
+                    CompositionLocalProvider(LocalTts provides ttsUi) {
+                        ChatHistoryList(messages = messages, agentState = agentState, userName = profile.name)
+                    }
                 }
 
                 agentState.pendingApproval?.let { request ->
@@ -170,6 +227,28 @@ fun HelixApp(viewModel: ChatViewModel) {
                     onStop = viewModel::cancelGeneration,
                     onOpenMenu = { showMenu = true }
                 )
+            }
+        }
+    }
+    }
+
+    if (showProfileEdit) {
+        ModalBottomSheet(
+            onDismissRequest = { showProfileEdit = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = AppSurface,
+            shape = ShapeSheet,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = AppStroke) }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
+            ) {
+                Text("Tu perfil", style = TitleStyle.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
+                ProfileForm(initial = profile, primaryLabel = "Guardar") { n, u, e, photo, remove ->
+                    viewModel.saveProfile(n, u, e, photo, remove)
+                    showProfileEdit = false
+                }
             }
         }
     }
@@ -221,6 +300,8 @@ fun HelixApp(viewModel: ChatViewModel) {
                 selectedModelId = selectedModelId,
                 systemPrompt = systemPrompt,
                 permissions = toolPermissions,
+                ttsVoiceId = ttsVoice,
+                onSaveTts = viewModel::setTtsVoice,
                 onPermissionChange = viewModel::setToolPermission,
                 onSave = { oKey, gKey, provider, model, prompt ->
                     viewModel.updateSettings(oKey, gKey, provider, model, prompt)
@@ -228,25 +309,6 @@ fun HelixApp(viewModel: ChatViewModel) {
                 }
             )
         }
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            containerColor = AppSurface2,
-            shape = ShapeCard,
-            title = { Text("¿Limpiar la conversación?", color = AppText, fontWeight = FontWeight.SemiBold) },
-            text = { Text("Se borrará todo el historial de este chat. No se puede deshacer.", color = AppTextMuted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearHistory()
-                    confirmClear = false
-                }) { Text("Limpiar", color = AppDanger, fontWeight = FontWeight.SemiBold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClear = false }) { Text("Cancelar", color = AppAccent) }
-            }
-        )
     }
 }
 

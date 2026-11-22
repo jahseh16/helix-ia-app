@@ -3,5 +3,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <!-- Mismo valor que AppBg (HelixTokens): evita el destello blanco al abrir. -->
-    <color name="helix_bg">#FF05070D</color>
+    <color name="helix_bg">#FF000000</color>
 </resources>

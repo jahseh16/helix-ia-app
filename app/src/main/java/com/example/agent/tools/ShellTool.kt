@@ -54,7 +54,15 @@ object ShellGuard {
             if (!inWorkspace && !safe) return "Ruta fuera del workspace: $p"
         }
 
-        blockedCommandIn(command)?.let { return "Comando bloqueado: $it" }
+        blockedCommandIn(command)?.let { bin ->
+            val hint = when (bin) {
+                "pm" -> " Para ver o contar apps usa la herramienta list_apps."
+                "am" -> " Para abrir apps usa open_app; para enlaces, open_url."
+                "curl", "wget" -> " Para la red usa web_search, web_fetch o http_request."
+                else -> ""
+            }
+            return "Comando bloqueado: $bin.$hint"
+        }
         return null
     }
 }
@@ -112,7 +120,7 @@ class ShellTool(
     override val description =
         "Ejecuta un comando de shell de Android (toybox: ls, cat, grep, find, sed, wc, head, tail, mkdir, cp, mv, rm, echo...) " +
             "con el workspace como directorio actual. No hay bash, git, python ni acceso a red. " +
-            "Las rutas deben quedar dentro del almacenamiento accesible (p. ej. /sdcard/Download). Salida combinada stdout+stderr con el código de salida."
+            "Las rutas deben quedar dentro del almacenamiento accesible (p. ej. /sdcard/Download). Para apps usa list_apps/open_app y para espacio libre o batería, device_info. Salida combinada stdout+stderr con el código de salida."
     override val parameters = schema(
         listOf("command"),
         "command" to prop("string", "Comando a ejecutar con sh -c"),

@@ -26,6 +26,18 @@ import com.example.agent.tools.ShellTool
 import com.example.agent.tools.ToolRegistry
 import com.example.agent.tools.WebFetchTool
 import com.example.agent.tools.Workspace
+import com.example.agent.tools.GenerateImageTool
+import com.example.agent.tools.WebSearchTool
+import com.example.agent.device.AndroidDeviceBridge
+import com.example.agent.device.DeviceInfoTool
+import com.example.agent.device.ListAppsTool
+import com.example.agent.device.OpenAppTool
+import com.example.agent.device.OpenUrlTool
+import com.example.data.security.Secrets
+import com.example.tts.FishAudioClient
+import com.example.tts.TtsController
+import com.example.tts.TtsVoices
+import com.example.tts.resolveFishKey
 import com.example.agent.tools.WriteFileTool
 import com.example.data.database.AppDatabase
 import com.example.data.database.ChatMessageEntity
@@ -40,6 +52,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import android.net.Uri
+import com.example.data.database.ConversationEntity
+import com.example.data.profile.ProfileStore
+import com.example.data.profile.UserProfile
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -80,16 +100,29 @@ class ChatViewModel @JvmOverloads constructor(
         .followSslRedirects(false)
         .build()
 
+    private val deviceBridge = AndroidDeviceBridge(application)
+
     private val registry = ToolRegistry(
         listOf(
             ReadFileTool(workspace), ListDirTool(workspace), GlobTool(workspace), GrepTool(workspace),
             WriteFileTool(workspace), EditFileTool(workspace),
             HttpRequestTool(toolsHttp), WebFetchTool(toolsHttp),
+            WebSearchTool(toolsHttp),
+            ListAppsTool(deviceBridge), OpenAppTool(deviceBridge), OpenUrlTool(deviceBridge), DeviceInfoTool(deviceBridge),
+            GenerateImageTool(toolsHttp.newBuilder().readTimeout(90, TimeUnit.SECONDS).build(), { File(application.filesDir, "images") }),
             ShellTool(workspace)
         )
     )
 
-    val allMessages: StateFlow<List<ChatMessageEntity>> = repository.allMessages
+    // --- Conversaciones: 0 = chat nuevo todavía sin guardar (se crea al enviar el primer mensaje)
+    val currentConversationId = MutableStateFlow(sharedPrefs.getLong(PREF_CURRENT_CONVERSATION, 0L))
+
+    val conversations: StateFlow<List<ConversationEntity>> = repository.conversations
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allMessages: StateFlow<List<ChatMessageEntity>> = currentConversationId
+        .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else repository.messages(id) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -98,6 +131,74 @@ class ChatViewModel @JvmOverloads constructor(
 
     init {
         migrateLegacyPreferences()
+        // Si la conversación guardada ya no existe (se borró), se empieza un chat nuevo
+        viewModelScope.launch {
+            val id = currentConversationId.value
+            if (!sharedPrefs.contains(PREF_CURRENT_CONVERSATION)) {
+                // Primera vez con historial: se abre el chat que ya existía (migrado como conversación 1)
+                if (repository.exists(1L)) setCurrentConversation(1L)
+            } else if (id != 0L && !repository.exists(id)) setCurrentConversation(0L)
+        }
+    }
+
+    private fun setCurrentConversation(id: Long) {
+        currentConversationId.value = id
+        sharedPrefs.edit().putLong(PREF_CURRENT_CONVERSATION, id).apply()
+    }
+
+    /** Abre una conversación del historial. Detiene la generación y el audio en curso. */
+    fun selectConversation(id: Long) {
+        if (id == currentConversationId.value) return
+        generationJob?.cancel()
+        tts.stop()
+        policy.clearSessionGrants()
+        setCurrentConversation(id)
+    }
+
+    /** Empieza un chat vacío; se guarda en el historial cuando se envía el primer mensaje. */
+    fun newChat() {
+        generationJob?.cancel()
+        tts.stop()
+        policy.clearSessionGrants()
+        setCurrentConversation(0L)
+    }
+
+    fun deleteConversation(id: Long) {
+        if (id == currentConversationId.value) newChat()
+        viewModelScope.launch { repository.deleteConversation(id) }
+    }
+
+    fun deleteAllConversations() {
+        newChat()
+        viewModelScope.launch { repository.deleteAll() }
+    }
+
+    // --- Perfil del usuario (local)
+    private val profileStore = ProfileStore(sharedPrefs, File(application.filesDir, "profile"))
+    val profile = MutableStateFlow(profileStore.load())
+
+    /** Pantalla de perfil inicial: solo la primera vez (hasta que se guarde u omita). */
+    val showProfileSetup = MutableStateFlow(!profileStore.isSetupDone)
+
+    fun saveProfile(name: String, username: String, email: String, newPhoto: Uri?, removePhoto: Boolean = false) {
+        viewModelScope.launch {
+            val photo = when {
+                newPhoto != null -> withContext(Dispatchers.IO) {
+                    profileStore.importPhoto(getApplication<Application>().contentResolver, newPhoto)
+                } ?: profile.value.photoPath
+                removePhoto -> null
+                else -> profile.value.photoPath
+            }
+            val updated = UserProfile(name.trim(), UserProfile.cleanUsername(username), email.trim(), photo)
+            profileStore.save(updated)
+            profile.value = updated
+            showProfileSetup.value = false
+        }
+    }
+
+    fun skipProfileSetup() {
+        profileStore.markSetupDone()
+        showProfileSetup.value = false
     }
 
     val apiKeyOpenRouter = MutableStateFlow(secureStore.getString(PREF_OPENROUTER).orEmpty())
@@ -121,6 +222,32 @@ class ChatViewModel @JvmOverloads constructor(
 
     val agentState = MutableStateFlow(AgentUiState())
 
+    // --- Voz (Fish Audio): la key del archivo de secretos manda; si está vacía se usa la de Ajustes
+    private val secrets = Secrets.load(application)
+    // Respaldo invisible: una key guardada por una versión anterior desde Ajustes
+    private val fishKeySetting = secureStore.getString(PREF_FISH).orEmpty()
+    val ttsVoiceId = MutableStateFlow(TtsVoices.byId(sharedPrefs.getString(PREF_TTS_VOICE, null)).id)
+
+    val tts = TtsController(
+        context = application,
+        scope = viewModelScope,
+        client = FishAudioClient(
+            OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).build()
+        ),
+        keyProvider = { resolveFishKey(secrets.fishAudioApiKey, fishKeySetting) },
+        voiceProvider = { ttsVoiceId.value }
+    )
+
+    fun setTtsVoice(voiceId: String) {
+        ttsVoiceId.value = TtsVoices.byId(voiceId).id
+        sharedPrefs.edit().putString(PREF_TTS_VOICE, ttsVoiceId.value).apply()
+    }
+
+    override fun onCleared() {
+        tts.release()
+        super.onCleared()
+    }
+
     private val policy = PermissionPolicy(
         initial = PermissionPolicy.TOOL_NAMES.mapNotNull { tool ->
             sharedPrefs.getString(PREF_PERM_PREFIX + tool, null)
@@ -131,6 +258,14 @@ class ChatViewModel @JvmOverloads constructor(
             sharedPrefs.edit().apply { levels.forEach { (tool, p) -> putString(PREF_PERM_PREFIX + tool, p.name) } }.apply()
         }
     )
+
+    init {
+        // Una versión anterior dejaba "Generar imagen" bloqueada: se restablece una sola vez
+        if (!sharedPrefs.getBoolean(PREF_PERMS_V3, false)) {
+            if (policy.levelOf("generate_image") == Permission.DENY) policy.setLevel("generate_image", Permission.AUTO)
+            sharedPrefs.edit().putBoolean(PREF_PERMS_V3, true).apply()
+        }
+    }
 
     val toolPermissions = MutableStateFlow(policy.snapshot())
 
@@ -291,11 +426,17 @@ class ChatViewModel @JvmOverloads constructor(
 
         agentState.value = AgentUiState(phase = AgentPhase.STREAMING, maxSteps = AgentRunner.DEFAULT_MAX_STEPS)
         generationJob = viewModelScope.launch {
+            // La conversación se fija al empezar: si el usuario cambia de chat, lo que llegue se guarda en la suya
+            var conv = currentConversationId.value
             try {
-                repository.insertMessage(ChatMessageEntity(sender = ChatMessageEntity.SENDER_USER, text = trimmed))
+                if (conv == 0L || !repository.exists(conv)) {
+                    conv = repository.createConversation(trimmed)
+                    setCurrentConversation(conv)
+                }
+                repository.insertMessage(conv, ChatMessageEntity(sender = ChatMessageEntity.SENDER_USER, text = trimmed))
 
                 // Historial COMPLETO (ya incluye el mensaje recién guardado), no solo el último turno
-                val history = HistoryMapper.toLlmMessages(repository.snapshot())
+                val history = HistoryMapper.toLlmMessages(repository.snapshot(conv))
                 val messages = listOf<LlmMessage>(
                     LlmMessage.System(AgentPrompt.build(systemPrompt.value, toolsEnabled))
                 ) + history
@@ -307,16 +448,18 @@ class ChatViewModel @JvmOverloads constructor(
                     approvals = approvalGate,
                     model = model
                 )
-                runner.run(messages, toolsEnabled).collect { handle(it, modelLabel) }
+                runner.run(messages, toolsEnabled).collect { handle(it, modelLabel, conv) }
             } catch (e: CancellationException) {
                 withContext(NonCancellable) {
-                    repository.insertMessage(
+                    if (conv != 0L && repository.exists(conv)) repository.insertMessage(
+                        conv,
                         ChatMessageEntity(sender = ChatMessageEntity.SENDER_SYSTEM, text = "Detenido por el usuario.")
                     )
                 }
                 throw e
             } catch (e: Exception) {
-                repository.insertMessage(
+                if (conv != 0L) repository.insertMessage(
+                    conv,
                     ChatMessageEntity(
                         sender = ChatMessageEntity.SENDER_ERROR,
                         text = "No fue posible completar la solicitud.\n${e.message ?: "Error desconocido"}"
@@ -329,7 +472,7 @@ class ChatViewModel @JvmOverloads constructor(
         }
     }
 
-    private suspend fun handle(event: AgentEvent, modelLabel: String) {
+    private suspend fun handle(event: AgentEvent, modelLabel: String, conv: Long) {
         when (event) {
             is AgentEvent.Phase -> agentState.update { it.copy(phase = event.phase, step = event.step) }
             is AgentEvent.Text -> agentState.update { it.copy(streamingText = it.streamingText + event.delta) }
@@ -339,6 +482,7 @@ class ChatViewModel @JvmOverloads constructor(
             is AgentEvent.AssistantTurn -> {
                 val m = event.message
                 repository.insertMessage(
+                    conv,
                     ChatMessageEntity(
                         sender = ChatMessageEntity.SENDER_AI,
                         text = m.content,
@@ -358,6 +502,7 @@ class ChatViewModel @JvmOverloads constructor(
 
             is AgentEvent.ToolFinished -> {
                 repository.insertMessage(
+                    conv,
                     ChatMessageEntity(
                         sender = ChatMessageEntity.SENDER_TOOL,
                         text = event.result.output,
@@ -375,9 +520,11 @@ class ChatViewModel @JvmOverloads constructor(
 
             is AgentEvent.Done -> when (event.phase) {
                 AgentPhase.FAILED -> repository.insertMessage(
+                    conv,
                     ChatMessageEntity(sender = ChatMessageEntity.SENDER_ERROR, text = event.message ?: "Error desconocido")
                 )
                 AgentPhase.STEP_LIMIT -> repository.insertMessage(
+                    conv,
                     ChatMessageEntity(sender = ChatMessageEntity.SENDER_SYSTEM, text = event.message ?: "Límite de pasos alcanzado")
                 )
                 else -> Unit
@@ -390,15 +537,10 @@ class ChatViewModel @JvmOverloads constructor(
         generationJob?.cancel()
     }
 
+    /** Borra la conversación abierta del historial y empieza un chat nuevo. */
     fun clearHistory() {
-        generationJob?.cancel()
-        policy.clearSessionGrants()
-        viewModelScope.launch {
-            repository.clearMessages()
-            repository.insertMessage(
-                ChatMessageEntity(sender = ChatMessageEntity.SENDER_SYSTEM, text = "La conversación se limpió correctamente.")
-            )
-        }
+        val id = currentConversationId.value
+        if (id != 0L) deleteConversation(id) else newChat()
     }
 
     companion object {
@@ -408,14 +550,18 @@ class ChatViewModel @JvmOverloads constructor(
         private const val PREF_MODEL = "selected_model_id"
         private const val PREF_AGENT_ENABLED = "agent_enabled"
         private const val PREF_AGENT_MODE = "agent_mode"
+        private const val PREF_FISH = "fish_audio_key"
+        private const val PREF_PERMS_V3 = "perms_migrated_v3"
+        private const val PREF_CURRENT_CONVERSATION = "current_conversation_id"
+        private const val PREF_TTS_VOICE = "tts_voice_id"
         private const val PREF_PERM_PREFIX = "perm_"
         // Clave nueva a propósito: descarta el prompt por defecto anterior guardado en el dispositivo.
         private const val PREF_SYSTEM_PROMPT = "system_prompt_v2"
 
         private val KNOWN_PREFS = setOf(
-            PREF_PROVIDER, PREF_MODEL, PREF_SYSTEM_PROMPT, PREF_AGENT_ENABLED, PREF_AGENT_MODE,
+            PREF_PROVIDER, PREF_MODEL, PREF_SYSTEM_PROMPT, PREF_AGENT_ENABLED, PREF_AGENT_MODE, PREF_TTS_VOICE, PREF_PERMS_V3, PREF_CURRENT_CONVERSATION,
             WorkspaceManager.KEY_ONBOARDING_DONE
-        )
+        ) + ProfileStore.KEYS
 
         private const val DEFAULT_PROVIDER = "OpenRouter"
         private const val DEFAULT_MODEL = ModelCatalog.DEFAULT_OPENROUTER

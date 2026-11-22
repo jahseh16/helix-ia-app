@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ChatMessageEntity::class], version = 3, exportSchema = false)
+@Database(entities = [ChatMessageEntity::class, ConversationEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
 
@@ -32,6 +32,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Historial de varias conversaciones: tabla `conversations` y columna `conversationId`.
+         * Los mensajes que ya existían pasan a una primera conversación, titulada con el primer mensaje del usuario.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `conversations` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN `conversationId` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_conversationId` ON `chat_messages` (`conversationId`)")
+                db.execSQL(
+                    "INSERT INTO conversations (id, title, createdAt, updatedAt) " +
+                        "SELECT 1, COALESCE((SELECT substr(text, 1, 48) FROM chat_messages WHERE sender = 'USER' ORDER BY id LIMIT 1), 'Chat anterior'), " +
+                        "MIN(timestamp), MAX(timestamp) FROM chat_messages HAVING COUNT(*) > 0"
+                )
+                db.execSQL("UPDATE chat_messages SET conversationId = 1")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -42,7 +63,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "helix_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance

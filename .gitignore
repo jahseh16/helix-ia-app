@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+
+# Secretos locales (API keys): NUNCA se suben al repositorio
+app/src/main/assets/helix_secrets.json
+helix_secrets.json
+local.secrets.properties

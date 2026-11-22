@@ -85,4 +85,14 @@ class PermissionPolicyTest {
         assertEquals(Permission.AUTO, p.decide("write_file"))
         assertEquals(Permission.DENY, p.decide("read_file"))
     }
+
+    @Test fun newAgentTools_haveSensibleDefaults() {
+        val policy = PermissionPolicy()
+        listOf("generate_image", "web_search", "list_apps", "device_info").forEach { assertEquals(it, Permission.AUTO, policy.decide(it)) }
+        listOf("open_app", "open_url").forEach { assertEquals(it, Permission.ASK, policy.decide(it)) }
+        policy.mode = AgentMode.AUTOMATIC
+        listOf("open_app", "open_url").forEach { assertEquals(it, Permission.AUTO, policy.decide(it)) }
+        policy.setLevel("generate_image", Permission.DENY)
+        assertEquals(Permission.DENY, policy.decide("generate_image"))
+    }
 }

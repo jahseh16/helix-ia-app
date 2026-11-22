@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.agent.runtime.HistoryMapper
+import com.example.agent.tools.ImageResult
 import com.example.data.database.ChatMessageEntity
 import com.example.ui.AgentUiState
 import com.example.ui.LiveToolState
@@ -39,7 +40,7 @@ import com.example.ui.theme.BodyStyle
 import com.example.ui.theme.TitleStyle
 
 @Composable
-fun ChatHistoryList(messages: List<ChatMessageEntity>, agentState: AgentUiState) {
+fun ChatHistoryList(messages: List<ChatMessageEntity>, agentState: AgentUiState, userName: String = "") {
     val listState = rememberLazyListState()
 
     // Los resultados de herramientas se pintan dentro de la tarjeta de su llamada, no como filas sueltas
@@ -65,7 +66,7 @@ fun ChatHistoryList(messages: List<ChatMessageEntity>, agentState: AgentUiState)
     }
 
     if (itemCount == 0) {
-        EmptyState()
+        EmptyState(userName)
         return
     }
 
@@ -117,7 +118,7 @@ private fun AiTurn(
             ReasoningBlock(text = message.reasoning, live = false, key = "reasoning-${message.id}")
         }
         if (message.text.isNotBlank()) {
-            AiMessageText(message.text, showCopy = true)
+            AiMessageText(message.text, showCopy = true, messageId = message.id)
         }
         calls.forEach { call ->
             ToolCard(
@@ -127,12 +128,15 @@ private fun AiTurn(
                 agentBusy = agentState.isBusy,
                 modifier = Modifier.padding(end = 8.dp)
             )
+            val imagePath = if (call.name == ImageResult.TOOL_NAME && toolResults[call.id]?.toolStatus == "OK")
+                toolResults[call.id]?.text?.let { ImageResult.pathFrom(it) } else null
+            if (imagePath != null) GeneratedImage(path = imagePath, modifier = Modifier.padding(end = 8.dp))
         }
     }
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(userName: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -143,26 +147,14 @@ private fun EmptyState() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(Brush.linearGradient(listOf(AppAccent, AppCyan))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SmartToy,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(38.dp)
-                )
-            }
+            com.example.ui.components.HelixLogo(size = 84.dp, corner = 26.dp)
 
-            Text(text = "¿En qué te ayudo hoy?", style = TitleStyle.copy(fontSize = 24.sp), textAlign = TextAlign.Center)
+            val first = userName.trim().substringBefore(' ')
+            Text(text = if (first.isNotEmpty()) "Hola, $first. ¿En qué te ayudo?" else "¿En qué te ayudo hoy?", style = TitleStyle.copy(fontSize = 24.sp), textAlign = TextAlign.Center)
 
             Text(
-                text = "Puedo leer, crear y editar archivos en tu workspace, ejecutar comandos y consultar la web. " +
-                    "Configura tu API key en Ajustes para empezar.",
+                text = "Busco en la web, abro tus apps, genero imágenes y trabajo con tus archivos. " +
+                    "Configura tu API key en Ajustes (menú ☰ → ⚙) para empezar.",
                 style = BodyStyle.copy(color = AppTextMuted, fontSize = 15.sp, lineHeight = 22.sp),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(0.86f)

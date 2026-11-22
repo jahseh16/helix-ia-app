@@ -17,24 +17,29 @@ import androidx.compose.ui.unit.sp
  * muy redondeadas.
  */
 
-// Fondos y superficies (de más profundo a más elevado)
-val DarkBackground = Color(0xFF05070D)
+// Fondo negro puro (sobre él se dibuja el campo de estrellas) y superficies "glass" estilo iOS:
+// translúcidas y neutras, para que las estrellas se intuyan detrás. El azul queda solo para acentos.
+val DarkBackground = Color(0xFF000000)
 val AppBg = DarkBackground
-val AppSurface = Color(0xFF0D1220)
-val AppSurface2 = Color(0xFF141B2D)
-val AppSurface3 = Color(0xFF1D2640)
-val AppStroke = Color(0xFF222C47)
-val AppCodeBg = Color(0xFF080B14)
+val AppSurface = Color(0xB8121318)    // paneles, hojas y tarjetas (≈72 % opaco)
+val AppSurface2 = Color(0xD11C1D23)   // controles y diálogos (≈82 % opaco)
+val AppSurface3 = Color(0xFF2A2B33)   // elementos elevados opacos
+val AppStroke = Color(0x26FFFFFF)     // borde fino blanco 15 %: el "filo" del cristal
+val AppCodeBg = Color(0xE6060608)
 
-// Texto
-val AppText = Color(0xFFEAF0FF)
-val AppTextMuted = Color(0xFF8D97B0)
+// Cristal: relleno y brillo superior para paneles glass
+val GlassFill = Color(0x14FFFFFF)
+val GlassHighlight = Color(0x1FFFFFFF)
+
+// Texto (etiquetas del sistema iOS en modo oscuro)
+val AppText = Color(0xFFF2F2F7)
+val AppTextMuted = Color(0xFF98989F)
 
 // Acento azul
 val AppAccent = Color(0xFF0A84FF)
 val AppAccentSoft = Color(0xFF64A8FF)
 val AppCyan = Color(0xFF64D2FF)
-val AppBubbleUser = Color(0xFF0A6CF0)
+val AppBubbleUser = Color(0xFF0A84FF)
 
 // Semánticos
 val AppGreen = Color(0xFF30D158)

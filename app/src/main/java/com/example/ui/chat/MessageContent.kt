@@ -16,7 +16,7 @@ fun MessageContentWithCodeBlocks(text: String, isUser: Boolean) {
     Column(
         // La burbuja del usuario necesita relleno interno; la respuesta de la IA va libre sobre el fondo
         modifier = if (isUser) Modifier.padding(horizontal = 14.dp, vertical = 12.dp) else Modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         parts.forEach { part ->
             when (part) {

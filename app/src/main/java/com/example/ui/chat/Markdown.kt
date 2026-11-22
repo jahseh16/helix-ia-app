@@ -1,6 +1,8 @@
 package com.example.ui.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -138,7 +139,7 @@ fun MarkdownText(text: String, isUser: Boolean, modifier: Modifier = Modifier) {
     val blocks = remember(text) { MarkdownParser.parse(text) }
     val base = if (isUser) Color.White else AppText
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Heading -> {
@@ -146,24 +147,24 @@ fun MarkdownText(text: String, isUser: Boolean, modifier: Modifier = Modifier) {
                     Text(
                         text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
                         style = BodyStyle.copy(color = base, fontSize = size, lineHeight = size * 1.3f, fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(top = if (block.level <= 2) 6.dp else 2.dp)
+                        modifier = Modifier.padding(top = if (block.level <= 2) 4.dp else 0.dp)
                     )
                 }
 
                 is MdBlock.Paragraph -> Text(
                     text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
-                    style = BodyStyle.copy(color = base, lineHeight = 24.sp)
+                    style = BodyStyle.copy(color = base, lineHeight = 22.sp)
                 )
 
                 is MdBlock.ListItem -> Row(modifier = Modifier.padding(start = (block.level * 18).dp)) {
                     Text(
                         text = block.marker,
-                        style = BodyStyle.copy(color = if (isUser) Color.White else AppAccentSoft, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+                        style = BodyStyle.copy(color = if (isUser) Color.White else AppAccentSoft, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
                         modifier = Modifier.width(if (block.marker == "•") 18.dp else 26.dp)
                     )
                     Text(
                         text = remember(block.text) { buildMarkdownAnnotatedString(block.text, base, isUser) },
-                        style = BodyStyle.copy(color = base, lineHeight = 24.sp),
+                        style = BodyStyle.copy(color = base, lineHeight = 22.sp),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -178,7 +179,7 @@ fun MarkdownText(text: String, isUser: Boolean, modifier: Modifier = Modifier) {
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = remember(block.text) { buildMarkdownAnnotatedString(block.text, AppTextMuted, isUser) },
-                        style = BodyStyle.copy(color = if (isUser) Color.White.copy(alpha = 0.9f) else AppTextMuted, lineHeight = 23.sp, fontStyle = FontStyle.Italic)
+                        style = BodyStyle.copy(color = if (isUser) Color.White.copy(alpha = 0.9f) else AppTextMuted, lineHeight = 21.sp, fontStyle = FontStyle.Italic)
                     )
                 }
 
@@ -192,23 +193,35 @@ fun MarkdownText(text: String, isUser: Boolean, modifier: Modifier = Modifier) {
 
 @Composable
 private fun MarkdownTable(table: MdBlock.Table, base: Color, isUser: Boolean) {
-    val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
-    Column(
+    val widths = remember(table) { MarkdownParser.tableColumnWidthsDp(table) }
+    val rows = remember(table) { listOf(table.header) + table.rows }
+    Box(
         modifier = Modifier
-            .horizontalScroll(rememberScrollState())
-            .background(AppSurface.copy(alpha = if (isUser) 0.25f else 1f), RoundedCornerShape(14.dp))
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, AppStroke, RoundedCornerShape(14.dp))
+            .background(AppSurface.copy(alpha = if (isUser) 0.25f else 1f))
     ) {
-        (listOf(table.header) + table.rows).forEachIndexed { rowIndex, row ->
-            Row(modifier = Modifier.background(if (rowIndex == 0) AppSurface3.copy(alpha = 0.6f) else Color.Transparent)) {
-                repeat(columns) { col ->
-                    Text(
-                        text = remember(row.getOrNull(col)) { buildMarkdownAnnotatedString(row.getOrNull(col).orEmpty(), base, isUser) },
-                        style = BodyStyle.copy(
-                            color = base, fontSize = 13.sp, lineHeight = 18.sp,
-                            fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal
-                        ),
-                        modifier = Modifier.widthIn(min = 90.dp, max = 240.dp).padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
+        // Cada columna tiene el MISMO ancho en todas las filas: nada se aplasta ni se desalinea.
+        // Si la tabla no cabe, se desplaza en horizontal dentro de su marco (la página no se corta).
+        Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            rows.forEachIndexed { rowIndex, row ->
+                if (rowIndex > 0) Box(Modifier.width(widths.sum().dp).height(1.dp).background(AppStroke.copy(alpha = 0.6f)))
+                Row(
+                    modifier = Modifier
+                        .height(IntrinsicSize.Min)
+                        .background(if (rowIndex == 0) AppSurface3.copy(alpha = 0.6f) else Color.Transparent)
+                ) {
+                    widths.forEachIndexed { col, w ->
+                        Text(
+                            text = remember(row.getOrNull(col)) { buildMarkdownAnnotatedString(row.getOrNull(col).orEmpty(), base, isUser) },
+                            style = BodyStyle.copy(
+                                color = base, fontSize = 13.sp, lineHeight = 18.sp,
+                                fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal
+                            ),
+                            modifier = Modifier.width(w.dp).fillMaxHeight().padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }
