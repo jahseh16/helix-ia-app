@@ -131,7 +131,14 @@ fun HelixApp(viewModel: ChatViewModel) {
 
     // Al volver de los ajustes de Android (o de cualquier otra pantalla) se recalcula el estado del permiso
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshWorkspace() }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> { viewModel.refreshWorkspace(); viewModel.refreshBackgroundAccess() }
+                Lifecycle.Event.ON_START -> viewModel.onAppForeground(true)
+                Lifecycle.Event.ON_STOP -> viewModel.onAppForeground(false)
+                else -> Unit
+            }
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
@@ -151,6 +158,25 @@ fun HelixApp(viewModel: ChatViewModel) {
                 arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
             )
         }
+    }
+
+    val backgroundUnrestricted by viewModel.backgroundUnrestricted.collectAsStateWithLifecycle()
+    val requestBackground: () -> Unit = {
+        val (primary, fallback) = viewModel.backgroundAccessIntents()
+        runCatching { context.startActivity(primary) }.onFailure { runCatching { context.startActivity(fallback) } }
+    }
+
+    // Android 13+: permiso de notificaciones para avisar al terminar de conectar en el navegador
+    var pendingConnector by remember { mutableStateOf<String?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        pendingConnector?.let(viewModel::connectConnector)
+        pendingConnector = null
+    }
+    val connectWithPermission: (String) -> Unit = { id ->
+        if (Build.VERSION.SDK_INT >= 33 && !com.example.notifications.ConnectNotifier.canNotify(context)) {
+            pendingConnector = id
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else viewModel.connectConnector(id)
     }
 
     var showSettings by remember { mutableStateOf(false) }
@@ -254,10 +280,12 @@ fun HelixApp(viewModel: ChatViewModel) {
     if (showConnectors) {
         ConnectorsSheet(
             connectors = viewModel.connectors.all,
-            onConnect = viewModel::connectConnector,
+            onConnect = connectWithPermission,
             onCancel = viewModel::cancelConnector,
             onDisconnect = viewModel::disconnectConnector,
-            onDismiss = { showConnectors = false }
+            onDismiss = { showConnectors = false },
+            backgroundUnrestricted = backgroundUnrestricted,
+            onRequestBackground = requestBackground
         )
     }
 

@@ -28,6 +28,10 @@ import com.example.agent.tools.WebFetchTool
 import com.example.agent.tools.Workspace
 import com.example.agent.tools.GenerateImageTool
 import com.example.connectors.ConnectorRegistry
+import com.example.connectors.ConnectorState
+import com.example.data.background.BackgroundAccess
+import com.example.notifications.ConnectNotifier
+import com.example.ui.components.copyToClipboard
 import com.example.connectors.github.GitHubApi
 import com.example.connectors.github.GitHubConnector
 import com.example.connectors.github.RepoInfo
@@ -142,10 +146,9 @@ class ChatViewModel @JvmOverloads constructor(
     }
 
     fun connectConnector(id: String) {
-        val clipboard = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
         connectors.get(id)?.connect { code ->
-            // El usuario solo tiene que pegar el código en la página de GitHub
-            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Código de GitHub", code))
+            // El usuario solo tiene que pegar el código en la página de GitHub (el diálogo también tiene botón Copiar)
+            copyToClipboard(getApplication(), "GitHub Code", code)
         }
     }
 
@@ -157,6 +160,34 @@ class ChatViewModel @JvmOverloads constructor(
     }
 
     fun dismissConnectorPrompt() { connectorPrompt.value = null }
+
+    // --- Segundo plano: sin restricciones de batería + aviso al terminar de conectar en el navegador
+    private val backgroundAccess = BackgroundAccess(application)
+    val backgroundUnrestricted = MutableStateFlow(backgroundAccess.isUnrestricted())
+    fun refreshBackgroundAccess() { backgroundUnrestricted.value = backgroundAccess.isUnrestricted() }
+    fun backgroundAccessIntents() = listOf(backgroundAccess.requestIntent(), backgroundAccess.settingsIntent())
+
+    /** La UI avisa de si Helix está a la vista; si no, al conectar se trae al frente o se notifica. */
+    @Volatile var appInForeground = true
+        private set
+    fun onAppForeground(foreground: Boolean) {
+        appInForeground = foreground
+        if (foreground) ConnectNotifier.cancel(getApplication())
+    }
+
+    init {
+        viewModelScope.launch {
+            var wasConnecting = false
+            githubConnector.state.collect { st ->
+                if (st is ConnectorState.Connecting) wasConnecting = true
+                if (st is ConnectorState.Connected && wasConnecting && !appInForeground) {
+                    ConnectNotifier.bringToFront(getApplication())
+                    ConnectNotifier.notifyConnected(getApplication(), githubConnector.title, st.account.login)
+                }
+                if (st !is ConnectorState.Connecting) wasConnecting = false
+            }
+        }
+    }
 
     private val registry = ToolRegistry(
         listOf(

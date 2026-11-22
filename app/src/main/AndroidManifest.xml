@@ -15,6 +15,15 @@
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Trabajo en segundo plano: pedir exclusión del ahorro de batería, mantener la CPU activa en tareas
+         largas y avisar con una notificación cuando termina de conectarse un servicio en el navegador -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Acceso del agente a la carpeta que el usuario autoriza con el selector de carpetas (SAF).
          Android 11+: "Acceso a todos los archivos". Android 9 y anteriores: permisos clásicos de almacenamiento. -->
@@ -40,6 +49,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:label="@string/app_name"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.MyApplication">

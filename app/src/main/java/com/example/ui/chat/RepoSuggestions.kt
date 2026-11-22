@@ -64,10 +64,12 @@ object Mentions {
             .filter { it.fullName.lowercase().contains(q) }
             .sortedBy { r ->
                 val n = r.fullName.lowercase()
+                val name = n.substringAfter('/')
                 when {
-                    n.substringAfter('/').startsWith(q) -> 0
-                    n.startsWith(q) -> 1
-                    else -> 2
+                    name == q -> 0                // nombre exacto
+                    name.startsWith(q) -> 1       // el nombre empieza por lo escrito
+                    n.startsWith(q) -> 2          // el propietario empieza por lo escrito
+                    else -> 3
                 }
             }
             .take(limit)

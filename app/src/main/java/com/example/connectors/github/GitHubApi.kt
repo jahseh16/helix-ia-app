@@ -1,6 +1,7 @@
 package com.example.connectors.github
 
 import com.example.agent.tools.executeCancellable
+import com.example.connectors.retryOnNetworkError
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -160,10 +161,13 @@ class GitHubApi(
             .header("User-Agent", "HelixAgent")
             .get().build()
         return try {
-            http.newCall(request).executeCancellable { r ->
-                val body = r.body?.string().orEmpty()
-                if (r.isSuccessful) return@executeCancellable body
-                throw errorFor(r.code, r.header("x-ratelimit-remaining"), r.header("x-ratelimit-reset"), body)
+            // Lecturas idempotentes: se reintentan ante fallos de DNS / red (p. ej. al volver del navegador)
+            retryOnNetworkError {
+                http.newCall(request).executeCancellable { r ->
+                    val body = r.body?.string().orEmpty()
+                    if (r.isSuccessful) return@executeCancellable body
+                    throw errorFor(r.code, r.header("x-ratelimit-remaining"), r.header("x-ratelimit-reset"), body)
+                }
             }
         } catch (e: GitHubException) {
             if (e.notConnected) onUnauthorized()

@@ -1,6 +1,7 @@
 package com.example.connectors.github
 
 import com.example.agent.tools.executeCancellable
+import com.example.connectors.retryOnNetworkError
 import kotlinx.coroutines.delay
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -16,7 +17,10 @@ data class DeviceCode(
     val intervalSeconds: Int
 )
 
-class DeviceFlowException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class DeviceFlowException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Fallo de red (DNS, sin conexión...) tras agotar los reintentos; durante el sondeo no es definitivo. */
+class DeviceFlowNetworkException(message: String, cause: Throwable? = null) : DeviceFlowException(message, cause)
 
 /**
  * OAuth Device Flow de GitHub (sin Client Secret: el Client ID es público y el flujo está pensado para
@@ -45,6 +49,7 @@ class DeviceFlowClient(
      */
     suspend fun pollForToken(clientId: String, code: DeviceCode): String {
         var interval = code.intervalSeconds
+        var networkFailures = 0
         val deadline = now() + code.expiresInSeconds * 1000L
         while (true) {
             sleep(interval * 1000L)
@@ -54,7 +59,14 @@ class DeviceFlowClient(
                 .add("device_code", code.deviceCode)
                 .add("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
                 .build()
-            val json = post("/login/oauth/access_token", body, notFoundMessage = NOT_FOUND_CLIENT)
+            val json = try {
+                post("/login/oauth/access_token", body, notFoundMessage = NOT_FOUND_CLIENT)
+            } catch (e: DeviceFlowNetworkException) {
+                // Sin red un momento (p. ej. al volver del navegador): se sigue esperando en vez de abortar
+                if (++networkFailures >= MAX_POLL_NETWORK_FAILURES) throw e
+                continue
+            }
+            networkFailures = 0
             val token = json.optString("access_token")
             if (token.isNotEmpty()) return token
             when (val error = json.optString("error")) {
@@ -73,7 +85,7 @@ class DeviceFlowClient(
             .post(body)
             .build()
         return try {
-            http.newCall(request).executeCancellable { r ->
+            retryOnNetworkError(sleep = sleep) { http.newCall(request).executeCancellable { r ->
                 val text = r.body?.string().orEmpty()
                 val json = runCatching { JSONObject(text) }.getOrNull()
                 when {
@@ -82,9 +94,9 @@ class DeviceFlowClient(
                     json == null -> throw DeviceFlowException("Respuesta no válida de GitHub (HTTP ${r.code})")
                     else -> json
                 }
-            }
+            } }
         } catch (e: IOException) {
-            throw DeviceFlowException("No se pudo conectar con GitHub: ${e.message ?: "error de red"}", e)
+            throw DeviceFlowNetworkException("No se pudo conectar con GitHub: ${e.message ?: "error de red"}", e)
         }
     }
 
@@ -99,6 +111,7 @@ class DeviceFlowClient(
     }
 
     companion object {
+        private const val MAX_POLL_NETWORK_FAILURES = 6
         const val NOT_FOUND_CLIENT =
             "GitHub no reconoce el Client ID (HTTP 404). Revisa que la OAuth App exista y tenga «Enable Device Flow» activado."
     }

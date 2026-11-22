@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.AlertDialog
@@ -35,7 +37,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.ui.components.copyToClipboard
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -68,7 +76,9 @@ fun ConnectorsSheet(
     onConnect: (String) -> Unit,
     onCancel: (String) -> Unit,
     onDisconnect: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    backgroundUnrestricted: Boolean = true,
+    onRequestBackground: () -> Unit = {}
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -91,8 +101,9 @@ fun ConnectorsSheet(
             }
             connectors.forEach { c ->
                 ConnectorCard(c, onConnect = { onConnect(c.id) }, onDisconnect = { onDisconnect(c.id) })
-                ConnectDialogs(c, onCancel = { onCancel(c.id) }, onRetry = { onConnect(c.id) })
+                ConnectDialogs(c, onCancel = { onCancel(c.id) }, backgroundUnrestricted, onRequestBackground)
             }
+            BackgroundCard(backgroundUnrestricted, onRequestBackground)
         }
     }
 }
@@ -186,11 +197,12 @@ private fun StatusLine(state: ConnectorState) {
 
 /** Diálogo del código de dispositivo: se muestra mientras hay una autorización pendiente. */
 @Composable
-private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, onRetry: () -> Unit) {
+private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, backgroundUnrestricted: Boolean, onRequestBackground: () -> Unit) {
     val state by connector.state.collectAsStateWithLifecycle()
     val connecting = state as? ConnectorState.Connecting ?: return
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(2200); copied = false } }
 
     AlertDialog(
         onDismissRequest = onCancel,
@@ -216,12 +228,22 @@ private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, onRetry: 
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.ContentCopy, null, tint = AppGreen, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Código copiado al portapapeles", style = MetaStyle.copy(color = AppGreen))
+                    // Copiar explícito: escribe en el portapapeles y confirma con cambio de estado y aviso
+                    OutlinedButton(
+                        onClick = {
+                            val ok = copyToClipboard(context, "GitHub Code", connecting.userCode)
+                            copied = ok
+                            if (!ok) android.widget.Toast.makeText(context, "No se pudo copiar el código", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, if (copied) AppGreen else AppStroke),
+                        modifier = Modifier.fillMaxWidth().height(46.dp).testTag("copy_code_button")
+                    ) {
+                        Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, null, tint = if (copied) AppGreen else AppAccentSoft, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (copied) "¡Copiado!" else "Copiar código", color = if (copied) AppGreen else AppAccentSoft, fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(
                         "Abre GitHub, pega el código y pulsa «Authorize». Vuelve aquí: la conexión se completa sola.",
                         color = AppTextMuted, textAlign = TextAlign.Center, fontSize = 14.sp
@@ -229,7 +251,7 @@ private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, onRetry: 
                     Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = {
-                            clipboard.setText(AnnotatedString(connecting.userCode))
+                            copyToClipboard(context, "GitHub Code", connecting.userCode)
                             openInBrowser(context, connecting.verificationUri ?: "https://github.com/login/device")
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AppAccent, contentColor = Color.White),
@@ -240,7 +262,12 @@ private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, onRetry: 
                         Spacer(Modifier.width(8.dp))
                         Text("Abrir GitHub para autorizar", fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(Modifier.height(12.dp))
+                    if (!backgroundUnrestricted) {
+                        TextButton(onClick = onRequestBackground, modifier = Modifier.testTag("dialog_background_hint")) {
+                            Text("Permitir segundo plano para no perder la conexión", color = AppWarning, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = AppTextMuted)
                         Spacer(Modifier.width(8.dp))
@@ -252,6 +279,43 @@ private fun ConnectDialogs(connector: Connector, onCancel: () -> Unit, onRetry: 
         confirmButton = {},
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancelar", color = AppTextMuted) } }
     )
+}
+
+/** Estado del permiso de trabajar sin restricciones de batería, con botón para pedirlo. */
+@Composable
+private fun BackgroundCard(unrestricted: Boolean, onRequest: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = AppSurface2,
+        border = BorderStroke(1.dp, if (unrestricted) AppGreen.copy(alpha = 0.45f) else AppStroke),
+        modifier = Modifier.fillMaxWidth().testTag("background_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.BatteryChargingFull, null, tint = if (unrestricted) AppGreen else AppWarning, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Trabajo en segundo plano", style = BodyStyle.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+                    Text(
+                        if (unrestricted) "Sin restricciones de batería" else "Restringido por el ahorro de batería",
+                        style = MetaStyle.copy(color = if (unrestricted) AppGreen else AppWarning)
+                    )
+                }
+            }
+            Text(
+                "Permite que Helix siga activo al ir al navegador a autorizar o al ejecutar tareas largas, sin que Android lo congele.",
+                style = MetaStyle.copy(fontSize = 13.sp, lineHeight = 18.sp)
+            )
+            if (!unrestricted) {
+                Button(
+                    onClick = onRequest,
+                    colors = ButtonDefaults.buttonColors(containerColor = AppAccent, contentColor = Color.White),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("request_background")
+                ) { Text("Permitir sin restricciones", fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
 }
 
 private fun openInBrowser(context: Context, url: String) {

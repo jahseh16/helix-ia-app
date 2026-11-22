@@ -140,7 +140,7 @@ class GitHubConnector(
 
     companion object {
         /** Client ID público de la OAuth App de Helix (el Device Flow no usa Client Secret). */
-        const val CLIENT_ID = "Ov23li3g5o0WFUwJaeZX"
+        const val CLIENT_ID = "Ov23liJUiMD3GU92HfLf"
         const val SCOPES = "repo read:user"
         const val KEY_TOKEN = "github_access_token"
         const val KEY_USER = "github_user"
