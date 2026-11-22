@@ -40,6 +40,7 @@ val AppBubbleUser = Color(0xFF0A6CF0)
 val AppGreen = Color(0xFF30D158)
 val AppPink = Color(0xFFFF6482)
 val AppDanger = Color(0xFFFF453A)
+val AppWarning = Color(0xFFFFB340)
 
 // Tipografías
 val UiSans = FontFamily.SansSerif

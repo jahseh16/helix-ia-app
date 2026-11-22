@@ -82,6 +82,6 @@ class ChatViewModelSecurityTest {
 
     @Test
     fun isNotGeneratingAtStartup() {
-        assertFalse(ChatViewModel(app, store).isGenerating.value)
+        assertFalse(ChatViewModel(app, store).agentState.value.isBusy)
     }
 }

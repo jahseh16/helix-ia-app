@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ChatMessageEntity::class], version = 2, exportSchema = false)
+@Database(entities = [ChatMessageEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
 
@@ -23,6 +23,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Añade las columnas para tool calling (todas opcionales: las filas existentes siguen válidas). */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("toolCallsJson", "reasoning", "toolCallId", "toolName", "toolArgs", "toolStatus").forEach { col ->
+                    db.execSQL("ALTER TABLE chat_messages ADD COLUMN $col TEXT")
+                }
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -33,7 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "helix_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance

@@ -25,14 +25,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import com.example.ui.ModelCatalog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.data.database.ChatMessageEntity
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.AppAccent
+import com.example.ui.theme.AppDanger
 import com.example.ui.theme.AppAccentSoft
 import com.example.ui.theme.AppBubbleUser
 import com.example.ui.theme.AppStroke
@@ -45,16 +48,7 @@ private val UserBubbleShape = RoundedCornerShape(24.dp, 24.dp, 6.dp, 24.dp)
 private val AiBubbleShape = RoundedCornerShape(6.dp, 24.dp, 24.dp, 24.dp)
 
 @Composable
-fun ChatMessageBubble(message: ChatMessageEntity) {
-    when (message.sender) {
-        "USER" -> UserBubble(message.text)
-        "AI" -> AiBubble(text = message.text, modelUsed = message.modelUsed)
-        else -> SystemNote(message.text)
-    }
-}
-
-@Composable
-private fun UserBubble(text: String) {
+fun UserBubble(text: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         Surface(
             shape = UserBubbleShape,
@@ -67,44 +61,43 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AiBubble(text: String, modelUsed: String?) {
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-        ModelLabel(modelUsed ?: "Asistente")
-        Surface(
-            shape = AiBubbleShape,
-            color = AppSurface,
-            border = BorderStroke(1.dp, AppStroke),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 20.dp)
-        ) {
-            MessageContentWithCodeBlocks(text = text, isUser = false)
-        }
+fun AiTextBubble(text: String) {
+    Surface(
+        shape = AiBubbleShape,
+        color = AppSurface,
+        border = BorderStroke(1.dp, AppStroke),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(end = 20.dp)
+    ) {
+        MessageContentWithCodeBlocks(text = text, isUser = false)
     }
 }
 
+/** Etiqueta de un mensaje del asistente: logo + nombre limpio (nunca el ID técnico). */
 @Composable
-private fun ModelLabel(text: String) {
+fun ModelLabel(raw: String) {
+    val model = remember(raw) { ModelCatalog.resolveStored(raw) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)
+        modifier = Modifier.padding(start = 6.dp, bottom = 6.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(AppAccent)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
+        if (model != null) {
+            BrandLogo(model.brand, size = 20.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+        } else {
+            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(AppAccent))
+            Spacer(modifier = Modifier.width(8.dp))
+        }
         Text(
-            text = text,
+            text = model?.name ?: raw,
             style = MetaStyle.copy(color = AppAccentSoft, fontWeight = FontWeight.SemiBold)
         )
     }
 }
 
 @Composable
-private fun SystemNote(text: String) {
+fun SystemNote(text: String) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Surface(shape = RoundedCornerShape(50), color = AppSurface2) {
             Text(
@@ -113,6 +106,22 @@ private fun SystemNote(text: String) {
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             )
         }
+    }
+}
+
+@Composable
+fun ErrorNote(text: String) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = AppDanger.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, AppDanger.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = text,
+            style = MetaStyle.copy(color = AppDanger, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        )
     }
 }
 

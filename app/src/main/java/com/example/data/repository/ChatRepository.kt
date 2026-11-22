@@ -11,6 +11,8 @@ class ChatRepository(private val chatMessageDao: ChatMessageDao) {
         return chatMessageDao.insertMessage(message)
     }
 
+    suspend fun snapshot(): List<ChatMessageEntity> = chatMessageDao.getAllMessages()
+
     suspend fun clearMessages() {
         chatMessageDao.clearAllMessages()
     }

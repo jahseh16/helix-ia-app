@@ -46,7 +46,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.agent.permissions.Permission
+import com.example.agent.permissions.PermissionPolicy
+import com.example.ui.ModelCatalog
+import com.example.ui.chat.BrandLogo
+import com.example.ui.chat.ToolPresentation
 import com.example.ui.theme.AppAccent
+import com.example.ui.theme.AppDanger
+import com.example.ui.theme.AppGreen
+import com.example.ui.theme.AppWarning
+import androidx.compose.foundation.layout.heightIn
 import com.example.ui.theme.AppAccentSoft
 import com.example.ui.theme.AppStroke
 import com.example.ui.theme.AppSurface2
@@ -58,7 +67,7 @@ import com.example.ui.theme.MetaStyle
 import com.example.ui.theme.ShapeMedium
 import com.example.ui.theme.TitleStyle
 
-private val PROVIDERS = listOf("OpenRouter", "Groq")
+private val PROVIDERS = ModelCatalog.providers
 
 /** Contenido de la hoja de ajustes (la envuelve un ModalBottomSheet en [com.example.ui.HelixApp]). */
 @Composable
@@ -68,8 +77,8 @@ fun SettingsPanel(
     selectedProvider: String,
     selectedModelId: String,
     systemPrompt: String,
-    openRouterModels: List<Pair<String, String>>,
-    groqModels: List<Pair<String, String>>,
+    permissions: Map<String, Permission>,
+    onPermissionChange: (String, Permission) -> Unit,
     onSave: (String, String, String, String, String) -> Unit
 ) {
     var oKey by remember { mutableStateOf(optKey) }
@@ -82,12 +91,12 @@ fun SettingsPanel(
     var gKeyVisible by remember { mutableStateOf(false) }
     var showModelsDropdown by remember { mutableStateOf(false) }
 
-    val models = if (provider == "OpenRouter") openRouterModels else groqModels
-    var customModel by remember { mutableStateOf(model.isNotBlank() && models.none { it.first == model }) }
+    val models = ModelCatalog.modelsFor(provider)
+    var customModel by remember { mutableStateOf(model.isNotBlank() && models.none { it.id == model }) }
 
     LaunchedEffect(provider) {
-        if (!customModel && models.none { it.first == model } && models.isNotEmpty()) {
-            model = models.first().first
+        if (!customModel && models.none { it.id == model } && models.isNotEmpty()) {
+            model = models.first().id
         }
     }
 
@@ -160,7 +169,7 @@ fun SettingsPanel(
 
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
-                value = if (customModel) "Otro (ID personalizado)" else models.find { it.first == model }?.second ?: model,
+                value = if (customModel) "Personalizado" else ModelCatalog.resolve(provider, model).name,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Modelo", style = MetaStyle) },
@@ -187,19 +196,20 @@ fun SettingsPanel(
                     .fillMaxWidth(0.88f)
                     .background(AppSurface3, ShapeMedium)
             ) {
-                models.forEach { (id, label) ->
+                models.forEach { m ->
                     DropdownMenuItem(
+                        leadingIcon = { BrandLogo(m.brand, size = 24.dp) },
                         text = {
                             Text(
-                                text = label,
+                                text = m.name,
                                 style = BodyStyle.copy(
                                     fontSize = 14.sp,
-                                    color = if (!customModel && id == model) AppAccentSoft else AppText
+                                    color = if (!customModel && m.id == model) AppAccentSoft else AppText
                                 )
                             )
                         },
                         onClick = {
-                            model = id
+                            model = m.id
                             customModel = false
                             showModelsDropdown = false
                         }
@@ -208,7 +218,7 @@ fun SettingsPanel(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "Otro (ID personalizado)",
+                            text = "Personalizado…",
                             style = BodyStyle.copy(fontSize = 14.sp, color = AppAccentSoft, fontWeight = FontWeight.SemiBold)
                         )
                     },
@@ -244,6 +254,8 @@ fun SettingsPanel(
             shape = ShapeMedium,
             modifier = Modifier.fillMaxWidth()
         )
+
+        PermissionsSection(permissions = permissions, onChange = onPermissionChange)
 
         Button(
             onClick = { onSave(oKey, gKey, provider, model.trim(), sysPrompt) },
@@ -312,3 +324,56 @@ internal fun helixFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = AppTextMuted,
     cursorColor = AppAccent
 )
+
+@Composable
+private fun PermissionsSection(permissions: Map<String, Permission>, onChange: (String, Permission) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            Text("Permisos de herramientas", style = TitleStyle.copy(fontSize = 17.sp))
+            Text("Toca para alternar: Auto · Preguntar · Bloquear", style = MetaStyle)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(AppSurface2)
+        ) {
+            PermissionPolicy.TOOL_NAMES.forEachIndexed { index, tool ->
+                val level = permissions[tool] ?: Permission.ASK
+                // El shell nunca puede ir en automático
+                val cycle = if (tool in PermissionPolicy.NEVER_AUTO) listOf(Permission.ASK, Permission.DENY)
+                else listOf(Permission.AUTO, Permission.ASK, Permission.DENY)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = ToolPresentation.title(tool),
+                        style = BodyStyle.copy(fontSize = 14.sp),
+                        modifier = Modifier.weight(1f)
+                    )
+                    val (label, color) = when (level) {
+                        Permission.AUTO -> "Auto" to AppGreen
+                        Permission.ASK -> "Preguntar" to AppWarning
+                        Permission.DENY -> "Bloquear" to AppDanger
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(color.copy(alpha = 0.14f))
+                            .clickable { onChange(tool, cycle[(cycle.indexOf(level) + 1) % cycle.size]) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .testTag("perm_$tool")
+                    ) {
+                        Text(label, style = MetaStyle.copy(color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold))
+                    }
+                }
+                if (index < PermissionPolicy.TOOL_NAMES.lastIndex) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(AppStroke))
+                }
+            }
+        }
+    }
+}

@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import com.example.ui.ModelCatalog
+import com.example.ui.chat.BrandLogo
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +55,7 @@ fun HelixTopBar(
     onOpenSettings: () -> Unit,
     onClearChat: () -> Unit
 ) {
+    val model = remember(provider, modelId) { ModelCatalog.resolve(provider, modelId) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -81,12 +85,16 @@ fun HelixTopBar(
                 text = "Helix",
                 style = TitleStyle.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold)
             )
-            Text(
-                text = "$provider · $modelId",
-                style = MetaStyle.copy(color = AppAccentSoft),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BrandLogo(model.brand, size = 16.dp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = model.name,
+                    style = MetaStyle.copy(color = AppAccentSoft),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(8.dp))

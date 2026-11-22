@@ -25,7 +25,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.agent.runtime.AgentPhase
+import com.example.ui.chat.ComposerMenuSheet
+import com.example.ui.chat.ApprovalCard
 import com.example.ui.chat.BottomInputBar
 import com.example.ui.chat.ChatHistoryList
 import com.example.ui.components.ErrorBanner
@@ -38,32 +42,19 @@ import com.example.ui.theme.AppStroke
 import com.example.ui.theme.AppSurface
 import com.example.ui.theme.AppSurface2
 import com.example.ui.theme.AppText
+import com.example.ui.theme.AppWarning
+import com.example.ui.theme.MetaStyle
 import com.example.ui.theme.AppTextMuted
 import com.example.ui.theme.ShapeCard
 import com.example.ui.theme.ShapeSheet
-
-private val OpenRouterModels = listOf(
-    "cohere/north-mini-code:free" to "cohere/north-mini-code:free",
-    "nvidia/nemotron-3.5-content-safety:free" to "nvidia/nemotron-3.5-content-safety:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free" to "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "poolside/laguna-m.1:free" to "poolside/laguna-m.1:free",
-    "openai/gpt-oss-20b:free" to "openai/gpt-oss-20b:free",
-    "poolside/laguna-xs-2.1:free" to "poolside/laguna-xs-2.1:free"
-)
-
-private val GroqModels = listOf(
-    "llama-4-scout-mock" to "Llama 4 Scout",
-    "llama-3.3-70b-versatile" to "Llama 3.3 70B",
-    "qwen-2.5-32b" to "Qwen 3 32B / Qwen 3.6 27B",
-    "gpt-oss-20b" to "GPT OSS 120B / GPT OSS 20B",
-    "whisper-large-v3" to "Whisper Large v3 / Turbo"
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelixApp(viewModel: ChatViewModel) {
     val messages by viewModel.allMessages.collectAsStateWithLifecycle()
-    val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val agentState by viewModel.agentState.collectAsStateWithLifecycle()
+    val agentEnabled by viewModel.agentEnabled.collectAsStateWithLifecycle()
+    val toolPermissions by viewModel.toolPermissions.collectAsStateWithLifecycle()
     val storageError by viewModel.storageError.collectAsStateWithLifecycle()
 
     val optKey by viewModel.apiKeyOpenRouter.collectAsStateWithLifecycle()
@@ -73,6 +64,7 @@ fun HelixApp(viewModel: ChatViewModel) {
     val systemPrompt by viewModel.systemPrompt.collectAsStateWithLifecycle()
 
     var showSettings by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -109,16 +101,43 @@ fun HelixApp(viewModel: ChatViewModel) {
                 }
 
                 Box(modifier = Modifier.weight(1f)) {
-                    ChatHistoryList(messages = messages, isGenerating = isGenerating)
+                    ChatHistoryList(messages = messages, agentState = agentState)
+                }
+
+                agentState.pendingApproval?.let { request ->
+                    ApprovalCard(request = request, onDecision = viewModel::respondToApproval)
+                }
+
+                agentState.notice?.let { notice ->
+                    Text(
+                        text = notice,
+                        style = MetaStyle.copy(color = AppWarning),
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)
+                    )
                 }
 
                 BottomInputBar(
-                    isGenerating = isGenerating,
+                    isGenerating = agentState.isBusy,
+                    statusText = agentStatusText(agentState),
+                    agentEnabled = agentEnabled,
                     onSend = viewModel::sendMessage,
-                    onStop = viewModel::cancelGeneration
+                    onStop = viewModel::cancelGeneration,
+                    onOpenMenu = { showMenu = true }
                 )
             }
         }
+    }
+
+    if (showMenu) {
+        ComposerMenuSheet(
+            provider = selectedProvider,
+            modelId = selectedModelId,
+            agentEnabled = agentEnabled,
+            workspacePath = viewModel.workspace.root.path,
+            onSelectModel = viewModel::selectModel,
+            onToggleAgent = { viewModel.setAgentEnabled(!agentEnabled) },
+            onDismiss = { showMenu = false }
+        )
     }
 
     if (showSettings) {
@@ -135,8 +154,8 @@ fun HelixApp(viewModel: ChatViewModel) {
                 selectedProvider = selectedProvider,
                 selectedModelId = selectedModelId,
                 systemPrompt = systemPrompt,
-                openRouterModels = OpenRouterModels,
-                groqModels = GroqModels,
+                permissions = toolPermissions,
+                onPermissionChange = viewModel::setToolPermission,
                 onSave = { oKey, gKey, provider, model, prompt ->
                     viewModel.updateSettings(oKey, gKey, provider, model, prompt)
                     showSettings = false
@@ -163,4 +182,15 @@ fun HelixApp(viewModel: ChatViewModel) {
             }
         )
     }
+}
+
+/** Texto de estado que se muestra dentro de la píldora mientras el agente trabaja. */
+private fun agentStatusText(state: AgentUiState): String? {
+    if (!state.isBusy) return null
+    val what = when (state.phase) {
+        AgentPhase.AWAITING_APPROVAL -> "Esperando tu aprobación"
+        AgentPhase.RUNNING_TOOL -> "Ejecutando herramienta"
+        else -> "Pensando"
+    }
+    return if (state.step > 0) "Paso ${state.step}/${state.maxSteps} · $what…" else "$what…"
 }

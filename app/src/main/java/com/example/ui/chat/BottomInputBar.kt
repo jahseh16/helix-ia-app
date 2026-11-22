@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -41,20 +43,22 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.AppAccent
-import com.example.ui.theme.AppDanger
-import com.example.ui.theme.AppStroke
-import com.example.ui.theme.AppSurface
-import com.example.ui.theme.AppSurface3
-import com.example.ui.theme.AppText
-import com.example.ui.theme.AppTextMuted
-import com.example.ui.theme.BodyStyle
+import com.example.ui.theme.*
 
+private val PillShape = RoundedCornerShape(30.dp)
+
+/**
+ * Una sola píldora: botón "+" (modelo, agente, workspace) a la izquierda, campo de texto en el centro y
+ * enviar/detener a la derecha. El estado del agente se muestra en el propio placeholder.
+ */
 @Composable
 fun BottomInputBar(
     isGenerating: Boolean,
+    statusText: String?,
+    agentEnabled: Boolean,
     onSend: (String) -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onOpenMenu: () -> Unit
 ) {
     var textState by remember { mutableStateOf("") }
     val canSend = textState.isNotBlank()
@@ -66,7 +70,7 @@ fun BottomInputBar(
         }
     }
 
-    val buttonColor by animateColorAsState(
+    val sendColor by animateColorAsState(
         targetValue = when {
             isGenerating -> AppDanger
             canSend -> AppAccent
@@ -80,19 +84,49 @@ fun BottomInputBar(
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
             .padding(horizontal = 14.dp, vertical = 10.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+            .clip(PillShape)
             .background(AppSurface)
-            .border(1.dp, AppStroke, androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
-            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            .border(1.dp, AppStroke, PillShape)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.Bottom
     ) {
+        // "+" con un punto azul si el modo agente está activo
+        Box(modifier = Modifier.padding(bottom = 2.dp, start = 2.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(AppSurface2)
+                    .clickable(onClick = onOpenMenu)
+                    .testTag("plus_button")
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Opciones: modelo, agente y workspace"
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = AppAccentSoft, modifier = Modifier.size(24.dp))
+            }
+            if (agentEnabled) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(AppAccent)
+                        .border(2.dp, AppSurface, CircleShape)
+                )
+            }
+        }
+
         OutlinedTextField(
             value = textState,
             onValueChange = { textState = it },
             placeholder = {
                 Text(
-                    text = if (isGenerating) "Helix está respondiendo…" else "Escribe un mensaje…",
-                    style = BodyStyle.copy(color = AppTextMuted)
+                    text = statusText ?: "Escribe un mensaje…",
+                    style = BodyStyle.copy(color = if (statusText != null) AppAccentSoft else AppTextMuted),
+                    maxLines = 1
                 )
             },
             enabled = !isGenerating,
@@ -114,7 +148,7 @@ fun BottomInputBar(
                 unfocusedContainerColor = Color.Transparent,
                 disabledContainerColor = Color.Transparent
             ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier
                 .weight(1f)
                 .testTag("chat_input_textfield"),
@@ -123,10 +157,10 @@ fun BottomInputBar(
 
         Box(
             modifier = Modifier
-                .padding(bottom = 4.dp, end = 2.dp)
+                .padding(bottom = 2.dp, end = 2.dp)
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(buttonColor)
+                .background(sendColor)
                 .clickable(enabled = isGenerating || canSend) { if (isGenerating) onStop() else send() }
                 .testTag(if (isGenerating) "stop_button" else "send_button")
                 .semantics {
