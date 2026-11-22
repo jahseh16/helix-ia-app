@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -67,7 +68,9 @@ fun ChatDrawer(
     onDelete: (Long) -> Unit,
     onDeleteAll: () -> Unit,
     onOpenProfile: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenConnectors: () -> Unit = {},
+    githubLogin: String? = null
 ) {
     var confirmDelete by remember { mutableStateOf<ConversationEntity?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
@@ -148,6 +151,23 @@ fun ChatDrawer(
                     }
                 }
             }
+        }
+
+        // Conectores
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onOpenConnectors)
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .testTag("drawer_connectors"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Extension, null, tint = AppAccentSoft, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("Conectores", style = BodyStyle.copy(fontSize = 15.sp), modifier = Modifier.weight(1f))
+            if (githubLogin != null) Text("GitHub ✓", style = MetaStyle.copy(color = AppGreen, fontSize = 12.sp))
         }
 
         // Área del usuario: perfil + Ajustes

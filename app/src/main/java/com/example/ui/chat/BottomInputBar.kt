@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,11 +64,18 @@ fun BottomInputBar(
     onModeChange: (AgentMode) -> Unit,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
-    onOpenMenu: () -> Unit
+    onOpenMenu: () -> Unit,
+    repoSuggest: RepoSuggestState = RepoSuggestState()
 ) {
     // rememberSaveable: el borrador sobrevive a rotaciones y a cambios de modo/modelo
     var textState by rememberSaveable { mutableStateOf("") }
     val canSend = textState.isNotBlank()
+
+    // @ o / al escribir: sugiere repositorios de GitHub (o avisa de que no está conectado)
+    val trigger = if (isGenerating) null else Mentions.detect(textState)
+    LaunchedEffect(trigger != null, repoSuggest.connected) {
+        if (trigger != null && repoSuggest.connected) repoSuggest.onNeedRepos()
+    }
 
     val send = {
         if (canSend) {
@@ -84,10 +93,17 @@ fun BottomInputBar(
         label = "send_button_color"
     )
 
+    Column(modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))) {
+    if (trigger != null) {
+        RepoSuggestionPanel(
+            trigger = trigger,
+            state = repoSuggest,
+            onPick = { repo -> textState = Mentions.insert(textState, trigger, repo.fullName) }
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
             .padding(horizontal = 14.dp, vertical = 10.dp)
             .clip(PillShape)
             .background(AppSurface)
@@ -189,5 +205,6 @@ fun BottomInputBar(
                 modifier = Modifier.size(22.dp)
             )
         }
+    }
     }
 }

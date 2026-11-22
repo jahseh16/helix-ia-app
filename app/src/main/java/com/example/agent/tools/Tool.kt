@@ -11,14 +11,16 @@ class ToolResult(
     val output: String,
     val status: ToolStatus = ToolStatus.OK,
     /** El fallo se debe a que falta conceder el acceso a la carpeta: la UI debe guiar al usuario a concederlo. */
-    val needsStorageAccess: Boolean = false
+    val needsStorageAccess: Boolean = false,
+    /** El fallo se debe a que falta conectar este conector (p. ej. "github"): la UI ofrece abrir Conectores. */
+    val connectorRequired: String? = null
 ) {
     val isError: Boolean get() = status != ToolStatus.OK
 
     companion object {
         fun ok(output: String) = ToolResult(output, ToolStatus.OK)
-        fun error(message: String, needsStorageAccess: Boolean = false) =
-            ToolResult(message, ToolStatus.ERROR, needsStorageAccess)
+        fun error(message: String, needsStorageAccess: Boolean = false, connectorRequired: String? = null) =
+            ToolResult(message, ToolStatus.ERROR, needsStorageAccess, connectorRequired)
         fun denied(message: String) = ToolResult(message, ToolStatus.DENIED)
     }
 }

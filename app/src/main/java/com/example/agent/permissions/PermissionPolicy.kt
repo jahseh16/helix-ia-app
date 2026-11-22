@@ -73,7 +73,8 @@ class PermissionPolicy(
         val TOOL_NAMES = listOf(
             "read_file", "list_dir", "glob", "grep", "write_file", "edit_file",
             "web_search", "web_fetch", "http_request", "generate_image",
-            "list_apps", "device_info", "open_app", "open_url", "run_shell"
+            "list_apps", "device_info", "open_app", "open_url",
+            "github_list_repos", "github_tree", "github_read_file", "github_commits", "github_issues", "run_shell"
         )
 
         val DEFAULTS: Map<String, Permission> = mapOf(
@@ -88,6 +89,12 @@ class PermissionPolicy(
             "generate_image" to Permission.AUTO,
             "web_search" to Permission.AUTO,
             "list_apps" to Permission.AUTO,
+            // Solo lectura de los repos del propio usuario, que conectó GitHub a propósito
+            "github_list_repos" to Permission.AUTO,
+            "github_tree" to Permission.AUTO,
+            "github_read_file" to Permission.AUTO,
+            "github_commits" to Permission.AUTO,
+            "github_issues" to Permission.AUTO,
             "device_info" to Permission.AUTO,
             "open_app" to Permission.ASK,
             "open_url" to Permission.ASK,

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -52,6 +53,7 @@ fun ComposerMenuSheet(
     agentEnabled: Boolean,
     onSelectModel: (provider: String, modelId: String) -> Unit,
     onToggleAgent: () -> Unit,
+    onOpenConnectors: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var modelsOpen by remember { mutableStateOf(false) }
@@ -112,6 +114,25 @@ fun ComposerMenuSheet(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            // --- Conectores
+            Group {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenConnectors() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("menu_connectors_row"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconBadge(Icons.Default.Extension, AppCyan)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Conectores", style = BodyStyle.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+                        Text("GitHub y más: referencia tus repos con @ o /", style = MetaStyle)
                     }
                 }
             }

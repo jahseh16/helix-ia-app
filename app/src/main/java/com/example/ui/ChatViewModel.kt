@@ -27,6 +27,11 @@ import com.example.agent.tools.ToolRegistry
 import com.example.agent.tools.WebFetchTool
 import com.example.agent.tools.Workspace
 import com.example.agent.tools.GenerateImageTool
+import com.example.connectors.ConnectorRegistry
+import com.example.connectors.github.GitHubApi
+import com.example.connectors.github.GitHubConnector
+import com.example.connectors.github.RepoInfo
+import com.example.connectors.github.gitHubTools
 import com.example.agent.tools.WebSearchTool
 import com.example.agent.device.AndroidDeviceBridge
 import com.example.agent.device.DeviceInfoTool
@@ -102,12 +107,64 @@ class ChatViewModel @JvmOverloads constructor(
 
     private val deviceBridge = AndroidDeviceBridge(application)
 
+    // --- Conectores (GitHub con OAuth Device Flow; el token vive cifrado en SecureStore)
+    private val connectorsHttp = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    private val githubApi: GitHubApi = GitHubApi(connectorsHttp, { githubConnector.token }, onUnauthorized = { githubConnector.onTokenRevoked() })
+    val githubConnector: GitHubConnector = GitHubConnector(
+        store = secureStore, http = connectorsHttp, scope = viewModelScope,
+        dir = File(application.filesDir, "connectors"), api = { githubApi }
+    )
+    val connectors = ConnectorRegistry(listOf(githubConnector))
+
+    /** Una herramienta falló por falta de un conector: la UI ofrece abrir Conectores. */
+    val connectorPrompt = MutableStateFlow<String?>(null)
+
+    /** Repos para sugerir al escribir @ o /. Se cargan al necesitarlos y se refrescan cada 5 minutos. */
+    val githubRepos = MutableStateFlow<List<RepoInfo>>(emptyList())
+    val githubReposLoading = MutableStateFlow(false)
+    private var reposLoadedAt = 0L
+
+    fun loadGithubRepos(force: Boolean = false) {
+        if (!githubConnector.isConnected || githubReposLoading.value) return
+        if (!force && githubRepos.value.isNotEmpty() && System.currentTimeMillis() - reposLoadedAt < 5 * 60_000) return
+        githubReposLoading.value = true
+        viewModelScope.launch {
+            try {
+                githubRepos.value = githubApi.repos()
+                reposLoadedAt = System.currentTimeMillis()
+            } catch (e: Exception) {
+                // Sin lista no hay sugerencias; el agente seguirá pudiendo consultar con las herramientas
+            } finally {
+                githubReposLoading.value = false
+            }
+        }
+    }
+
+    fun connectConnector(id: String) {
+        val clipboard = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        connectors.get(id)?.connect { code ->
+            // El usuario solo tiene que pegar el código en la página de GitHub
+            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Código de GitHub", code))
+        }
+    }
+
+    fun cancelConnector(id: String) = connectors.get(id)?.cancel()
+
+    fun disconnectConnector(id: String) {
+        connectors.get(id)?.disconnect()
+        if (id == "github") { githubRepos.value = emptyList(); reposLoadedAt = 0L }
+    }
+
+    fun dismissConnectorPrompt() { connectorPrompt.value = null }
+
     private val registry = ToolRegistry(
         listOf(
             ReadFileTool(workspace), ListDirTool(workspace), GlobTool(workspace), GrepTool(workspace),
             WriteFileTool(workspace), EditFileTool(workspace),
             HttpRequestTool(toolsHttp), WebFetchTool(toolsHttp),
             WebSearchTool(toolsHttp),
+        ) + gitHubTools(githubApi) + listOf(
             ListAppsTool(deviceBridge), OpenAppTool(deviceBridge), OpenUrlTool(deviceBridge), DeviceInfoTool(deviceBridge),
             GenerateImageTool(toolsHttp.newBuilder().readTimeout(90, TimeUnit.SECONDS).build(), { File(application.filesDir, "images") }),
             ShellTool(workspace)
@@ -438,7 +495,7 @@ class ChatViewModel @JvmOverloads constructor(
                 // Historial COMPLETO (ya incluye el mensaje recién guardado), no solo el último turno
                 val history = HistoryMapper.toLlmMessages(repository.snapshot(conv))
                 val messages = listOf<LlmMessage>(
-                    LlmMessage.System(AgentPrompt.build(systemPrompt.value, toolsEnabled))
+                    LlmMessage.System(AgentPrompt.build(systemPrompt.value, toolsEnabled, githubConnector.login))
                 ) + history
 
                 val runner = AgentRunner(
@@ -513,6 +570,7 @@ class ChatViewModel @JvmOverloads constructor(
                     )
                 )
                 if (event.result.needsStorageAccess) storagePrompt.value = true
+                event.result.connectorRequired?.let { connectorPrompt.value = it }
                 agentState.update { it.copy(liveTools = it.liveTools - event.call.id) }
             }
 

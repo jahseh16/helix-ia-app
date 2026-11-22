@@ -17,6 +17,7 @@ enum class Brand(val label: String, val color: Color, val initial: String) {
     PARTICLE("Particle", Color(0xFFFF8FB1), "P"),
     INCLUSION("inclusionAI", Color(0xFFFFB340), "i"),
     RECURSIVE("Recursive", Color(0xFF5EE0B5), "R"),
+    GITHUB("GitHub", Color(0xFFF2F2F7), "G"),
     GENERIC("IA", Color(0xFF8D97B0), "·")
 }
 

@@ -55,6 +55,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.workspace.AccessStatus
 import com.example.ui.chat.LocalTts
+import com.example.ui.chat.RepoSuggestState
+import com.example.ui.connectors.ConnectorsSheet
+import androidx.compose.ui.platform.testTag
 import com.example.ui.chat.TtsUi
 import com.example.ui.chat.StorageAccessDialog
 import com.example.ui.chat.StorageUnsupportedDialog
@@ -153,13 +156,20 @@ fun HelixApp(viewModel: ChatViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showProfileEdit by remember { mutableStateOf(false) }
+    var showConnectors by remember { mutableStateOf(false) }
+
+    val githubState by viewModel.githubConnector.state.collectAsStateWithLifecycle()
+    val githubRepos by viewModel.githubRepos.collectAsStateWithLifecycle()
+    val githubLoading by viewModel.githubReposLoading.collectAsStateWithLifecycle()
+    val connectorPrompt by viewModel.connectorPrompt.collectAsStateWithLifecycle()
+    val githubLogin = (githubState as? com.example.connectors.ConnectorState.Connected)?.account?.login
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val closeDrawerThen: (() -> Unit) -> Unit = { action -> scope.launch { drawerState.close() }; action() }
 
     // Efecto cristal: lo que queda detrás de un panel abierto se desenfoca (Android 12+)
-    val overlayOpen = drawerState.targetValue == DrawerValue.Open || showMenu || showSettings || showProfileEdit
+    val overlayOpen = drawerState.targetValue == DrawerValue.Open || showMenu || showSettings || showProfileEdit || showConnectors
     val blur by animateDpAsState(if (overlayOpen) 14.dp else 0.dp, label = "glass-blur")
 
     ModalNavigationDrawer(
@@ -180,7 +190,9 @@ fun HelixApp(viewModel: ChatViewModel) {
                     onDelete = viewModel::deleteConversation,
                     onDeleteAll = viewModel::deleteAllConversations,
                     onOpenProfile = { closeDrawerThen { showProfileEdit = true } },
-                    onOpenSettings = { closeDrawerThen { showSettings = true } }
+                    onOpenSettings = { closeDrawerThen { showSettings = true } },
+                    onOpenConnectors = { closeDrawerThen { showConnectors = true } },
+                    githubLogin = githubLogin
                 )
             }
         }
@@ -225,11 +237,45 @@ fun HelixApp(viewModel: ChatViewModel) {
                     onModeChange = viewModel::setAgentMode,
                     onSend = viewModel::sendMessage,
                     onStop = viewModel::cancelGeneration,
-                    onOpenMenu = { showMenu = true }
+                    onOpenMenu = { showMenu = true },
+                    repoSuggest = RepoSuggestState(
+                        connected = githubLogin != null,
+                        repos = githubRepos,
+                        loading = githubLoading,
+                        onNeedRepos = { viewModel.loadGithubRepos() },
+                        onOpenConnectors = { showConnectors = true }
+                    )
                 )
             }
         }
     }
+    }
+
+    if (showConnectors) {
+        ConnectorsSheet(
+            connectors = viewModel.connectors.all,
+            onConnect = viewModel::connectConnector,
+            onCancel = viewModel::cancelConnector,
+            onDisconnect = viewModel::disconnectConnector,
+            onDismiss = { showConnectors = false }
+        )
+    }
+
+    // Una herramienta necesitaba un conector que no está conectado: acceso directo a Conectores
+    connectorPrompt?.let { id ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissConnectorPrompt,
+            containerColor = AppSurface2,
+            shape = ShapeCard,
+            title = { Text("${if (id == "github") "GitHub" else "El conector"} no está conectado", color = AppText, fontWeight = FontWeight.SemiBold) },
+            text = { Text("Para trabajar con tus repositorios, conecta tu cuenta en Conectores y vuelve a pedírselo al agente.", color = AppTextMuted) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissConnectorPrompt(); showConnectors = true }, modifier = Modifier.testTag("connector_prompt_open")) {
+                    Text("Abrir Conectores", color = AppAccent, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissConnectorPrompt) { Text("Ahora no", color = AppTextMuted) } }
+        )
     }
 
     if (showProfileEdit) {
@@ -281,6 +327,7 @@ fun HelixApp(viewModel: ChatViewModel) {
             agentEnabled = agentEnabled,
             onSelectModel = viewModel::selectModel,
             onToggleAgent = { viewModel.setAgentEnabled(!agentEnabled) },
+            onOpenConnectors = { showMenu = false; showConnectors = true },
             onDismiss = { showMenu = false }
         )
     }

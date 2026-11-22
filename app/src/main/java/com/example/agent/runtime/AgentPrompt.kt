@@ -3,7 +3,7 @@ package com.example.agent.runtime
 object AgentPrompt {
 
     /** Prompt de sistema: instrucciones del usuario + reglas fijas del agente. */
-    fun build(userPrompt: String, toolsEnabled: Boolean): String = buildString {
+    fun build(userPrompt: String, toolsEnabled: Boolean, githubUser: String? = null): String = buildString {
         append(userPrompt.trim().ifBlank { "Eres Helix AI, un asistente técnico de programación preciso y directo." })
         append("\n\n")
         append(
@@ -29,6 +29,7 @@ object AgentPrompt {
                 - Apps: list_apps para contar o buscar apps instaladas; open_app para abrir una (WhatsApp, Cámara, YouTube...); open_url para enlaces (web, wa.me, tel:, mailto:, geo:).
                 - Dispositivo: device_info para batería, almacenamiento libre, RAM, modelo, versión de Android y fecha/hora.
                 - Imágenes: generate_image (prompt detallado en inglés) cuando pidan una imagen, dibujo o ilustración; se muestra sola en el chat.
+                - GitHub: ${if (githubUser != null) "el usuario conectó GitHub como @$githubUser. Si escribe @owner/repo (o /owner/repo) se refiere a ese repositorio: explóralo con github_tree, lee archivos con github_read_file, revisa github_commits y github_issues, y solo después propón mejoras concretas citando archivo y línea. Usa github_list_repos para ver sus repos." else "NO está conectado. Si el usuario pide algo de sus repositorios, dile que abra Conectores (menú ☰ → Conectores, o el botón +) y conecte GitHub."}
                 - Archivos: almacenamiento del teléfono (si el usuario concedió «Acceso a todos los archivos»). Usa rutas reales como /sdcard/Download/archivo.txt; nunca '..'. Explora (list_dir, glob, grep) y lee (read_file) antes de editar; edit_file para cambios puntuales con old_string exacto; write_file para crear o reescribir. En Android 10 solo hay una carpeta interna.
                 - run_shell: comandos de Android (toybox) sobre el almacenamiento. No hay bash, git, python, pm, am ni red.
 
