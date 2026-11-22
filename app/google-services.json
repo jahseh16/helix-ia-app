@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "852002381269",
+    "project_id": "helix-agente",
+    "storage_bucket": "helix-agente.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:852002381269:android:64bd041d6c53f41e39f15c",
+        "android_client_info": {
+          "package_name": "com.aistudio.devmatrix.hcwypt"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "852002381269-7c4bifn5vftq7iv2p9uk1m09bfui3vqf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.devmatrix.hcwypt",
+            "certificate_hash": "118f202c791bf4e635788f4b34e617f2ae463fa3"
+          }
+        },
+        {
+          "client_id": "852002381269-pdv62l9gcr0guoogcanohlm2b96rt225.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEkBBXiXabi_EM8H5HtVrmxGwEm1rcP-M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "852002381269-pdv62l9gcr0guoogcanohlm2b96rt225.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

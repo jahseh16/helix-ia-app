@@ -1,15 +1,21 @@
 package com.example.data.database
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 /** Una conversación guardada del historial (panel lateral). */
-@Entity(tableName = "conversations")
+@Entity(tableName = "conversations", indices = [Index("cloudId")])
 data class ConversationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** Id del documento `users/{uid}/chats/{chatId}`. */
+    val cloudId: String? = UUID.randomUUID().toString(),
+    /** Cuenta propietaria en la nube; null = chat solo local (se adopta al iniciar sesión). */
+    val ownerUid: String? = null
 ) {
     companion object {
         const val MAX_TITLE = 48

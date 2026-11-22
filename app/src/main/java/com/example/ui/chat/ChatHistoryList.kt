@@ -78,7 +78,7 @@ fun ChatHistoryList(messages: List<ChatMessageEntity>, agentState: AgentUiState,
     ) {
         items(items = visible, key = { it.id }) { message ->
             when (message.sender) {
-                ChatMessageEntity.SENDER_USER -> UserBubble(message.text)
+                ChatMessageEntity.SENDER_USER -> UserBubble(message.text, message.imagePath, hasCloudImage = message.imageUrl != null)
                 ChatMessageEntity.SENDER_AI -> AiTurn(message, toolResults, agentState)
                 ChatMessageEntity.SENDER_ERROR -> ErrorNote(message.text)
                 else -> SystemNote(message.text)

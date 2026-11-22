@@ -82,7 +82,9 @@ fun SettingsPanel(
     onPermissionChange: (String, Permission) -> Unit,
     onSave: (String, String, String, String, String) -> Unit,
     ttsVoiceId: String = TtsVoices.default.id,
-    onSaveTts: (voiceId: String) -> Unit = {}
+    onSaveTts: (voiceId: String) -> Unit = {},
+    vlmKey: String = "",
+    onSaveVlm: (String) -> Unit = {}
 ) {
     var voiceId by remember { mutableStateOf(ttsVoiceId) }
     var oKey by remember { mutableStateOf(optKey) }
@@ -93,6 +95,8 @@ fun SettingsPanel(
 
     var oKeyVisible by remember { mutableStateOf(false) }
     var gKeyVisible by remember { mutableStateOf(false) }
+    var vKey by remember { mutableStateOf(vlmKey) }
+    var vKeyVisible by remember { mutableStateOf(false) }
     var showModelsDropdown by remember { mutableStateOf(false) }
 
     val models = ModelCatalog.modelsFor(provider)
@@ -259,6 +263,24 @@ fun SettingsPanel(
             modifier = Modifier.fillMaxWidth()
         )
 
+        // Visión (vlm.run): gratis y sin API key por defecto; la key personal es opcional
+        Column {
+            Text("Visión (vlm.run)", style = TitleStyle.copy(fontSize = 17.sp))
+            Text(
+                if (vKey.isBlank()) "Modo gratis activo: no necesitas API key. Modelo qwen/qwen3.5-0.8b."
+                else "Usando tu API key personal de vlm.run.",
+                style = MetaStyle.copy(color = if (vKey.isBlank()) AppGreen else AppAccentSoft)
+            )
+        }
+        ApiKeyField(
+            label = "API key de vlm.run (opcional)",
+            value = vKey,
+            onValueChange = { vKey = it },
+            visible = vKeyVisible,
+            onToggleVisible = { vKeyVisible = !vKeyVisible },
+            testTag = "api_key_vlm_input"
+        )
+
         VoiceSection(
             voiceId = voiceId,
             onVoiceChange = { voiceId = it }
@@ -269,6 +291,7 @@ fun SettingsPanel(
         Button(
             onClick = {
                 onSaveTts(voiceId)
+                onSaveVlm(vKey)
                 onSave(oKey, gKey, provider, model.trim(), sysPrompt)
             },
             enabled = model.isNotBlank(),

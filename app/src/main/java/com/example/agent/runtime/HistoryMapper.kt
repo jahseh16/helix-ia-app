@@ -19,7 +19,7 @@ object HistoryMapper {
         val messages = mutableListOf<LlmMessage>()
         for (row in rows) {
             when (row.sender) {
-                ChatMessageEntity.SENDER_USER -> messages += LlmMessage.User(row.text)
+                ChatMessageEntity.SENDER_USER -> messages += LlmMessage.User(userContent(row))
                 ChatMessageEntity.SENDER_AI -> {
                     val calls = parseToolCalls(row.toolCallsJson)
                     messages += LlmMessage.Assistant(row.text, calls)
@@ -33,6 +33,22 @@ object HistoryMapper {
             }
         }
         return limit(messages, maxChars)
+    }
+
+    /**
+     * Texto que ve el modelo para un mensaje del usuario. Si lleva imagen, se añade la descripción del modelo de
+     * visión (el modelo de chat es de texto): así el agente "ve" la imagen sin que viaje ni se guarde base64.
+     */
+    fun userContent(row: ChatMessageEntity): String {
+        val hasImage = row.imagePath != null || row.imageUrl != null
+        return when {
+            !row.imageAnalysis.isNullOrBlank() ->
+                row.text.trim().let { if (it.isEmpty()) "" else "$it\n\n" } +
+                    "[Imagen adjunta · descripción del modelo de visión]\n${row.imageAnalysis}"
+            hasImage -> row.text.trim().let { if (it.isEmpty()) "" else "$it\n\n" } +
+                "[El usuario adjuntó una imagen que no se pudo analizar]"
+            else -> row.text
+        }
     }
 
     /** Recorta por el principio, siempre empezando en un mensaje del usuario (no deja `tool` huérfanos). */

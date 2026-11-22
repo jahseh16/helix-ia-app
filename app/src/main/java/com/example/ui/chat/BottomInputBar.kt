@@ -5,6 +5,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -65,11 +75,13 @@ fun BottomInputBar(
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     onOpenMenu: () -> Unit,
-    repoSuggest: RepoSuggestState = RepoSuggestState()
+    repoSuggest: RepoSuggestState = RepoSuggestState(),
+    attachedImagePath: String? = null,
+    onRemoveAttachment: () -> Unit = {}
 ) {
     // rememberSaveable: el borrador sobrevive a rotaciones y a cambios de modo/modelo
     var textState by rememberSaveable { mutableStateOf("") }
-    val canSend = textState.isNotBlank()
+    val canSend = textState.isNotBlank() || attachedImagePath != null
 
     // @ o / al escribir: sugiere repositorios de GitHub (o avisa de que no está conectado)
     val trigger = if (isGenerating) null else Mentions.detect(textState)
@@ -101,6 +113,7 @@ fun BottomInputBar(
             onPick = { repo -> textState = Mentions.insert(textState, trigger, repo.fullName) }
         )
     }
+    if (attachedImagePath != null) AttachmentPreview(attachedImagePath, onRemoveAttachment)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -206,5 +219,35 @@ fun BottomInputBar(
             )
         }
     }
+    }
+}
+
+/** Miniatura de la imagen que se enviará con el próximo mensaje, con botón para quitarla. */
+@Composable
+private fun AttachmentPreview(path: String, onRemove: () -> Unit) {
+    val bitmap by produceState<ImageBitmap?>(null, path) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = 2 })?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    Box(modifier = Modifier.padding(start = 22.dp, top = 6.dp).testTag("attachment_preview")) {
+        Box(
+            modifier = Modifier.size(78.dp).clip(RoundedCornerShape(18.dp)).background(AppSurface2).border(1.dp, AppStroke, RoundedCornerShape(18.dp))
+        ) {
+            bitmap?.let { Image(it, "Imagen adjunta", contentScale = ContentScale.Crop, modifier = Modifier.size(78.dp)) }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(Color(0xCC000000))
+                .border(1.dp, AppStroke, CircleShape)
+                .clickable(onClick = onRemove)
+                .testTag("attachment_remove"),
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Default.Close, "Quitar imagen", tint = Color.White, modifier = Modifier.size(14.dp)) }
     }
 }

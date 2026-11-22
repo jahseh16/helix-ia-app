@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -86,6 +87,15 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.okhttp)
+  // Firebase: Auth (Google + correo), Firestore (chats/mensajes) y Storage (imágenes comprimidas)
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
+  implementation(libs.firebase.storage)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play)
+  implementation(libs.google.id)
+  implementation(libs.kotlinx.coroutines.play)
   // implementation(libs.play.services.location)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

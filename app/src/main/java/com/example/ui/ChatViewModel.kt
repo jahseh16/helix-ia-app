@@ -27,6 +27,14 @@ import com.example.agent.tools.ToolRegistry
 import com.example.agent.tools.WebFetchTool
 import com.example.agent.tools.Workspace
 import com.example.agent.tools.GenerateImageTool
+import com.example.cloud.AuthException
+import com.example.cloud.AuthRepository
+import com.example.cloud.CloudServices
+import com.example.cloud.CloudSync
+import com.example.cloud.SignInCancelled
+import com.example.vision.ImageCompressor
+import com.example.vision.PendingImage
+import com.example.vision.VlmRunClient
 import com.example.connectors.ConnectorRegistry
 import com.example.connectors.ConnectorState
 import com.example.data.background.BackgroundAccess
@@ -91,6 +99,116 @@ class ChatViewModel @JvmOverloads constructor(
         application.getSharedPreferences("helix_prefs", Context.MODE_PRIVATE)
 
     private val repository = ChatRepository(AppDatabase.getDatabase(application).chatMessageDao())
+
+    // --- Cuenta y nube (Firebase). Sin sesión todo sigue funcionando solo en local.
+    private val chatImagesDir = File(application.filesDir, "chat_images")
+    val auth = AuthRepository(CloudServices.auth())
+    private val cloudSync = CloudSync(
+        dao = AppDatabase.getDatabase(application).chatMessageDao(),
+        store = CloudServices.store(),
+        auth = auth,
+        scope = viewModelScope,
+        imageDir = chatImagesDir
+    ).also { repository.sync = it }
+
+    val authUser = auth.user
+    val syncState = cloudSync.state
+    val authBusy = MutableStateFlow(false)
+
+    /** Resultado de la última acción de la cuenta (error o confirmación) para la vista de cuenta. */
+    val authMessage = MutableStateFlow<AuthMessage?>(null)
+
+    /** Mensajes sin subir que impiden cerrar sesión sin perderlos (0 = ninguno). */
+    val signOutPending = MutableStateFlow(0)
+
+    fun signInWithEmail(email: String, password: String) = runAuth { auth.signIn(email, password) }
+    fun registerWithEmail(email: String, password: String) = runAuth { auth.register(email, password) }
+    fun resetPassword(email: String) = runAuth(
+        success = "Te enviamos un correo para restablecer tu contraseña. Revisa también la carpeta de spam."
+    ) { auth.sendPasswordReset(email) }
+
+    /** [activityContext] debe ser la Activity: Credential Manager muestra su selector de cuentas encima. */
+    fun signInWithGoogle(activityContext: Context) = runAuth { auth.signInWithGoogle(activityContext) }
+
+    private fun runAuth(success: String? = null, block: suspend () -> Unit) {
+        if (authBusy.value) return
+        authBusy.value = true
+        authMessage.value = null
+        viewModelScope.launch {
+            try {
+                block()
+                success?.let { authMessage.value = AuthMessage(it, isError = false) }
+            } catch (e: SignInCancelled) {
+                // El usuario cerró el selector de Google: no es un error
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                authMessage.value = AuthMessage(e.message ?: "No se pudo completar la operación.", isError = true)
+            } finally {
+                authBusy.value = false
+            }
+        }
+    }
+
+    fun clearAuthMessage() { authMessage.value = null }
+
+    fun syncNow() {
+        viewModelScope.launch { cloudSync.syncNow() }
+    }
+
+    /**
+     * Cierra sesión. Primero intenta subir lo pendiente; si algo no se pudo subir avisa ([signOutPending])
+     * y solo continúa con [force]. Los chats de la cuenta se retiran del teléfono (siguen en la nube).
+     */
+    fun signOut(force: Boolean = false) {
+        viewModelScope.launch {
+            val pending = cloudSync.prepareSignOut(force)
+            signOutPending.value = pending
+            if (pending > 0) return@launch
+            auth.signOut()
+            newChat()
+        }
+    }
+
+    fun dismissSignOutWarning() { signOutPending.value = 0 }
+
+    // --- Visión (vlm.run): gratis y sin API key por defecto; la key personal es opcional y va cifrada
+    val vlmKey = MutableStateFlow(secureStore.getString(PREF_VLM).orEmpty())
+    private val vlm = VlmRunClient(OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).build(), keyProvider = { vlmKey.value })
+
+    fun saveVlmKey(key: String) {
+        val clean = key.trim()
+        vlmKey.value = clean
+        try {
+            secureStore.putString(PREF_VLM, clean)
+        } catch (e: SecureStoreException) {
+            storageError.value = "No se pudo guardar la API key de vlm.run de forma segura."
+        }
+    }
+
+    /** Imagen elegida para el próximo mensaje (ya reducida a ≤1024 px y comprimida). */
+    val pendingImage = MutableStateFlow<PendingImage?>(null)
+    val attachError = MutableStateFlow<String?>(null)
+
+    fun attachImage(uri: Uri) {
+        viewModelScope.launch {
+            val img = withContext(Dispatchers.IO) {
+                ImageCompressor(getApplication<Application>().contentResolver, chatImagesDir).compress(uri)
+            }
+            if (img == null) {
+                attachError.value = "No se pudo leer esa imagen."
+            } else {
+                attachError.value = null
+                clearAttachment()
+                pendingImage.value = img
+            }
+        }
+    }
+
+    fun clearAttachment() {
+        pendingImage.value?.let { runCatching { File(it.path).delete() } }
+        pendingImage.value = null
+    }
 
     val workspace = Workspace(workspaceRoot)
     private val workspaceManager = WorkspaceManager(application, sharedPrefs, workspaceRoot)
@@ -504,7 +622,9 @@ class ChatViewModel @JvmOverloads constructor(
 
     fun sendMessage(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || agentState.value.isBusy) return
+        val attachment = pendingImage.value
+        if ((trimmed.isEmpty() && attachment == null) || agentState.value.isBusy) return
+        pendingImage.value = null
 
         val provider = selectedProvider.value
         val model = selectedModelId.value
@@ -518,10 +638,14 @@ class ChatViewModel @JvmOverloads constructor(
             var conv = currentConversationId.value
             try {
                 if (conv == 0L || !repository.exists(conv)) {
-                    conv = repository.createConversation(trimmed)
+                    conv = repository.createConversation(trimmed.ifBlank { "Imagen adjunta" })
                     setCurrentConversation(conv)
                 }
-                repository.insertMessage(conv, ChatMessageEntity(sender = ChatMessageEntity.SENDER_USER, text = trimmed))
+                val userRow = ChatMessageEntity(
+                    sender = ChatMessageEntity.SENDER_USER, text = trimmed, imagePath = attachment?.path
+                )
+                val userRowId = repository.insertMessage(conv, userRow)
+                if (attachment != null) analyzeImage(userRowId, attachment, trimmed)
 
                 // Historial COMPLETO (ya incluye el mensaje recién guardado), no solo el último turno
                 val history = HistoryMapper.toLlmMessages(repository.snapshot(conv))
@@ -557,6 +681,31 @@ class ChatViewModel @JvmOverloads constructor(
                 agentState.value = AgentUiState()
                 generationJob = null
             }
+        }
+    }
+
+    /** Describe la imagen adjunta con vlm.run y guarda la descripción en el mensaje (el chat es de texto). */
+    private suspend fun analyzeImage(messageId: Long, attachment: PendingImage, userText: String) {
+        agentState.update { it.copy(notice = "Analizando la imagen con vlm.run…") }
+        try {
+            val bytes = withContext(Dispatchers.IO) { File(attachment.path).readBytes() }
+            val analysis = vlm.describe(bytes, userText)
+            // Se relee la fila: la subida a Storage pudo añadirle su URL mientras se analizaba
+            repository.message(messageId)?.let { repository.updateMessage(it.copy(imageAnalysis = analysis)) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repository.message(messageId)?.let {
+                repository.insertMessage(
+                    it.conversationId,
+                    ChatMessageEntity(
+                        sender = ChatMessageEntity.SENDER_SYSTEM,
+                        text = "No se pudo analizar la imagen: ${e.message ?: "error desconocido"}"
+                    )
+                )
+            }
+        } finally {
+            agentState.update { it.copy(notice = null) }
         }
     }
 
@@ -640,6 +789,7 @@ class ChatViewModel @JvmOverloads constructor(
         private const val PREF_AGENT_ENABLED = "agent_enabled"
         private const val PREF_AGENT_MODE = "agent_mode"
         private const val PREF_FISH = "fish_audio_key"
+        private const val PREF_VLM = "vlm_run_api_key"
         private const val PREF_PERMS_V3 = "perms_migrated_v3"
         private const val PREF_CURRENT_CONVERSATION = "current_conversation_id"
         private const val PREF_TTS_VOICE = "tts_voice_id"
@@ -658,3 +808,6 @@ class ChatViewModel @JvmOverloads constructor(
             "Eres Helix AI, un asistente técnico de programación preciso y directo."
     }
 }
+
+/** Mensaje de la vista de cuenta: confirmación (verde) o error (rojo). */
+data class AuthMessage(val text: String, val isError: Boolean)

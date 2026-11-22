@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Extension
@@ -70,7 +71,9 @@ fun ChatDrawer(
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenConnectors: () -> Unit = {},
-    githubLogin: String? = null
+    githubLogin: String? = null,
+    accountLabel: String? = null,
+    onOpenAccount: () -> Unit = {}
 ) {
     var confirmDelete by remember { mutableStateOf<ConversationEntity?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
@@ -151,6 +154,27 @@ fun ChatDrawer(
                     }
                 }
             }
+        }
+
+        // Cuenta (Firebase)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onOpenAccount)
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .testTag("drawer_account"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.AccountCircle, null, tint = AppAccentSoft, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("Cuenta", style = BodyStyle.copy(fontSize = 15.sp), modifier = Modifier.weight(1f))
+            Text(
+                if (accountLabel != null) "${accountLabel.take(18)} ✓" else "Iniciar sesión",
+                style = MetaStyle.copy(color = if (accountLabel != null) AppGreen else AppTextMuted, fontSize = 12.sp),
+                maxLines = 1
+            )
         }
 
         // Conectores

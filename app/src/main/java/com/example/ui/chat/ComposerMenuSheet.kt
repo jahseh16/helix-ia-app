@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Extension
@@ -54,6 +55,7 @@ fun ComposerMenuSheet(
     onSelectModel: (provider: String, modelId: String) -> Unit,
     onToggleAgent: () -> Unit,
     onOpenConnectors: () -> Unit = {},
+    onAttachImage: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var modelsOpen by remember { mutableStateOf(false) }
@@ -75,6 +77,25 @@ fun ComposerMenuSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Opciones", style = TitleStyle.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold), modifier = Modifier.padding(start = 4.dp))
+
+            // --- Adjuntar imagen (visión con vlm.run)
+            Group {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onAttachImage() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .testTag("menu_attach_image_row"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconBadge(Icons.Default.Image, AppPink)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Adjuntar imagen", style = BodyStyle.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+                        Text("Helix la analiza con visión y la guarda en tu cuenta", style = MetaStyle)
+                    }
+                }
+            }
 
             // --- Modelo
             Group {

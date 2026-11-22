@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ChatMessageEntity::class, ConversationEntity::class], version = 4, exportSchema = false)
+@Database(entities = [ChatMessageEntity::class, ConversationEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
 
@@ -53,6 +53,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Nube: identificadores estables de Firestore, imagen adjunta (ruta local + URL de Storage + análisis)
+         * y propietario del chat. Las filas existentes reciben un id aleatorio y quedan pendientes de subir.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("cloudId", "imagePath", "imageUrl", "imageAnalysis").forEach { col ->
+                    db.execSQL("ALTER TABLE chat_messages ADD COLUMN `$col` TEXT")
+                }
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN `synced` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE chat_messages SET cloudId = lower(hex(randomblob(16)))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_messages_cloudId` ON `chat_messages` (`cloudId`)")
+                db.execSQL("ALTER TABLE conversations ADD COLUMN `cloudId` TEXT")
+                db.execSQL("ALTER TABLE conversations ADD COLUMN `ownerUid` TEXT")
+                db.execSQL("UPDATE conversations SET cloudId = lower(hex(randomblob(16)))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_conversations_cloudId` ON `conversations` (`cloudId`)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -63,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "helix_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance

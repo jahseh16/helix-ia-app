@@ -26,6 +26,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
 import com.example.ui.ModelCatalog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,14 +51,42 @@ private val UserBubbleShape = RoundedCornerShape(24.dp, 24.dp, 6.dp, 24.dp)
 private val AiBubbleShape = RoundedCornerShape(6.dp, 24.dp, 24.dp, 24.dp)
 
 @Composable
-fun UserBubble(text: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Surface(
-            shape = UserBubbleShape,
-            color = AppBubbleUser,
-            modifier = Modifier.widthIn(max = 320.dp)
-        ) {
-            MessageContentWithCodeBlocks(text = text, isUser = true)
+fun UserBubble(text: String, imagePath: String? = null, hasCloudImage: Boolean = false) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (imagePath != null || hasCloudImage) AttachedImage(imagePath)
+        if (text.isNotBlank()) {
+            Surface(
+                shape = UserBubbleShape,
+                color = AppBubbleUser,
+                modifier = Modifier.widthIn(max = 320.dp)
+            ) {
+                MessageContentWithCodeBlocks(text = text, isUser = true)
+            }
+        }
+    }
+}
+
+/** Imagen adjunta de un mensaje (archivo local ya comprimido). Si aún no se ha bajado de la nube, un marcador. */
+@Composable
+private fun AttachedImage(path: String?) {
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, path) {
+        value = path?.let { p ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { android.graphics.BitmapFactory.decodeFile(p)?.asImageBitmap() }.getOrNull()
+            }
+        }
+    }
+    val bmp = bitmap
+    Surface(shape = RoundedCornerShape(20.dp), color = AppSurface2, modifier = Modifier.widthIn(max = 260.dp).testTag("message_image")) {
+        if (bmp != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bmp,
+                contentDescription = "Imagen adjunta",
+                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            Text("Imagen guardada en la nube", style = MetaStyle, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp))
         }
     }
 }

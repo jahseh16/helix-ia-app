@@ -75,6 +75,8 @@ import com.example.ui.chat.ChatHistoryList
 import com.example.ui.components.ErrorBanner
 import com.example.ui.components.HelixTopBar
 import com.example.ui.settings.SettingsPanel
+import com.example.ui.account.AccountPanel
+import androidx.activity.result.PickVisualMediaRequest
 import com.example.ui.theme.AppAccent
 import com.example.ui.theme.AppBg
 import com.example.ui.theme.AppDanger
@@ -116,6 +118,14 @@ fun HelixApp(viewModel: ChatViewModel) {
     val currentConversation by viewModel.currentConversationId.collectAsStateWithLifecycle()
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val showProfileSetup by viewModel.showProfileSetup.collectAsStateWithLifecycle()
+    val authUser by viewModel.authUser.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val authBusy by viewModel.authBusy.collectAsStateWithLifecycle()
+    val authMessage by viewModel.authMessage.collectAsStateWithLifecycle()
+    val signOutPending by viewModel.signOutPending.collectAsStateWithLifecycle()
+    val vlmKey by viewModel.vlmKey.collectAsStateWithLifecycle()
+    val pendingImage by viewModel.pendingImage.collectAsStateWithLifecycle()
+    val attachError by viewModel.attachError.collectAsStateWithLifecycle()
 
     // Primera apertura: perfil de usuario antes que nada
     if (showProfileSetup) {
@@ -183,6 +193,13 @@ fun HelixApp(viewModel: ChatViewModel) {
     var showMenu by remember { mutableStateOf(false) }
     var showProfileEdit by remember { mutableStateOf(false) }
     var showConnectors by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(false) }
+
+    // Selector de fotos del sistema (sin permisos): la imagen se reduce y comprime al elegirla
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.attachImage(uri)
+    }
+    // Al iniciar sesión con éxito, la hoja de cuenta ya no es necesaria para entrar: se queda para ver el estado
 
     val githubState by viewModel.githubConnector.state.collectAsStateWithLifecycle()
     val githubRepos by viewModel.githubRepos.collectAsStateWithLifecycle()
@@ -195,7 +212,7 @@ fun HelixApp(viewModel: ChatViewModel) {
     val closeDrawerThen: (() -> Unit) -> Unit = { action -> scope.launch { drawerState.close() }; action() }
 
     // Efecto cristal: lo que queda detrás de un panel abierto se desenfoca (Android 12+)
-    val overlayOpen = drawerState.targetValue == DrawerValue.Open || showMenu || showSettings || showProfileEdit || showConnectors
+    val overlayOpen = drawerState.targetValue == DrawerValue.Open || showMenu || showSettings || showProfileEdit || showConnectors || showAccount
     val blur by animateDpAsState(if (overlayOpen) 14.dp else 0.dp, label = "glass-blur")
 
     ModalNavigationDrawer(
@@ -218,7 +235,9 @@ fun HelixApp(viewModel: ChatViewModel) {
                     onOpenProfile = { closeDrawerThen { showProfileEdit = true } },
                     onOpenSettings = { closeDrawerThen { showSettings = true } },
                     onOpenConnectors = { closeDrawerThen { showConnectors = true } },
-                    githubLogin = githubLogin
+                    githubLogin = githubLogin,
+                    accountLabel = authUser?.label,
+                    onOpenAccount = { closeDrawerThen { viewModel.clearAuthMessage(); showAccount = true } }
                 )
             }
         }
@@ -264,6 +283,8 @@ fun HelixApp(viewModel: ChatViewModel) {
                     onSend = viewModel::sendMessage,
                     onStop = viewModel::cancelGeneration,
                     onOpenMenu = { showMenu = true },
+                    attachedImagePath = pendingImage?.path,
+                    onRemoveAttachment = viewModel::clearAttachment,
                     repoSuggest = RepoSuggestState(
                         connected = githubLogin != null,
                         repos = githubRepos,
@@ -303,6 +324,64 @@ fun HelixApp(viewModel: ChatViewModel) {
                 }
             },
             dismissButton = { TextButton(onClick = viewModel::dismissConnectorPrompt) { Text("Ahora no", color = AppTextMuted) } }
+        )
+    }
+
+    if (showAccount) {
+        ModalBottomSheet(
+            onDismissRequest = { showAccount = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = AppSurface,
+            shape = ShapeSheet,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = AppStroke) }
+        ) {
+            AccountPanel(
+                user = authUser,
+                sync = syncState,
+                busy = authBusy,
+                message = authMessage,
+                onSignIn = viewModel::signInWithEmail,
+                onRegister = viewModel::registerWithEmail,
+                onResetPassword = viewModel::resetPassword,
+                onGoogle = { viewModel.signInWithGoogle(context) },
+                onSyncNow = viewModel::syncNow,
+                onSignOut = { viewModel.signOut() },
+                onClearMessage = viewModel::clearAuthMessage
+            )
+        }
+    }
+
+    // Hay mensajes que no se pudieron subir (sin conexión): cerrar sesión los dejaría sin copia en la nube
+    if (signOutPending > 0) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSignOutWarning,
+            containerColor = AppSurface2,
+            shape = ShapeCard,
+            title = { Text("Hay mensajes sin subir", color = AppText, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Text(
+                    "$signOutPending mensaje(s) todavía no están en la nube (¿sin conexión?). " +
+                        "Si cierras sesión ahora se perderán. Conéctate y pulsa Sincronizar ahora, o cierra sesión igualmente.",
+                    color = AppTextMuted
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.signOut(force = true) }, modifier = Modifier.testTag("signout_force")) {
+                    Text("Cerrar sesión igualmente", color = AppDanger, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissSignOutWarning) { Text("Cancelar", color = AppTextMuted) } }
+        )
+    }
+
+    attachError?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.attachError.value = null },
+            containerColor = AppSurface2,
+            shape = ShapeCard,
+            title = { Text("No se pudo adjuntar", color = AppText, fontWeight = FontWeight.SemiBold) },
+            text = { Text(msg, color = AppTextMuted) },
+            confirmButton = { TextButton(onClick = { viewModel.attachError.value = null }) { Text("Aceptar", color = AppAccent) } }
         )
     }
 
@@ -356,6 +435,10 @@ fun HelixApp(viewModel: ChatViewModel) {
             onSelectModel = viewModel::selectModel,
             onToggleAgent = { viewModel.setAgentEnabled(!agentEnabled) },
             onOpenConnectors = { showMenu = false; showConnectors = true },
+            onAttachImage = {
+                showMenu = false
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
             onDismiss = { showMenu = false }
         )
     }
@@ -376,6 +459,8 @@ fun HelixApp(viewModel: ChatViewModel) {
                 systemPrompt = systemPrompt,
                 permissions = toolPermissions,
                 ttsVoiceId = ttsVoice,
+                vlmKey = vlmKey,
+                onSaveVlm = viewModel::saveVlmKey,
                 onSaveTts = viewModel::setTtsVoice,
                 onPermissionChange = viewModel::setToolPermission,
                 onSave = { oKey, gKey, provider, model, prompt ->
